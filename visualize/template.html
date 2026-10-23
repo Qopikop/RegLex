@@ -1,0 +1,768 @@
+<title>Regex Lexer Generator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a scanner "tape" of input cells with a read head; below it the per-step
+   decision (every rule races, longest wins), then the compiler internals. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --sunken: #e8ecf2;
+  --fg: #141821;
+  --muted: #5b6475;
+  --line: #d3d9e3;
+  --head: #d4720b;          /* the read head: the one accent */
+  --t-kw: #7a3fd6;
+  --t-id: #1f63d1;
+  --t-num: #0a8a6a;
+  --t-op: #c2306f;
+  --t-ws: #8b93a3;
+  --t-err: #d02c1f;
+  --t-str: #8a6a00;
+  --t-com: #5d7f35;
+  --t-punct: #4c5566;
+  --t-dir: #0b7d93;
+  --t-x0: #b4530a; --t-x1: #0891b2; --t-x2: #5e8f0c; --t-x3: #c0267a;
+  --ok: #0a8a50;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --cell: 2rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1218; --surface: #171b24; --sunken: #1f2430; --fg: #e6e9ef; --muted: #98a1b3;
+    --line: #2c3342; --head: #f59a34;
+    --t-kw: #b48cff; --t-id: #6ea2ff; --t-num: #3ccfa4; --t-op: #ff7cb0; --t-ws: #7d8697; --t-err: #ff6b5e; --ok: #44d08a;
+    --t-str: #e2c35a; --t-com: #9cc06e; --t-punct: #a9b1c0; --t-dir: #5cc8e0; --t-x0: #f0a35c; --t-x1: #5fd0e8; --t-x2: #a8d65e; --t-x3: #f472b6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1218; --surface: #171b24; --sunken: #1f2430; --fg: #e6e9ef; --muted: #98a1b3;
+  --line: #2c3342; --head: #f59a34;
+  --t-kw: #b48cff; --t-id: #6ea2ff; --t-num: #3ccfa4; --t-op: #ff7cb0; --t-ws: #7d8697; --t-err: #ff6b5e; --ok: #44d08a;
+    --t-str: #e2c35a; --t-com: #9cc06e; --t-punct: #a9b1c0; --t-dir: #5cc8e0; --t-x0: #f0a35c; --t-x1: #5fd0e8; --t-x2: #a8d65e; --t-x3: #f472b6;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); line-height: 1.1; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+.eyebrow { font: 600 0.72rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.muted { color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
+
+/* ---------- header ---------- */
+header { display: flex; flex-direction: column; gap: 12px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 22px; font: 500 0.85rem var(--font-mono); color: var(--muted); }
+.stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.programs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.programs .lbl { font: 600 0.72rem var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-right: 4px; }
+.programs button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; text-align: left; }
+.programs button small { font: 400 0.72rem var(--font-mono); color: var(--muted); }
+.programs button[aria-pressed="true"] { border-color: var(--head); box-shadow: inset 0 -3px 0 var(--head); }
+.programs button[aria-pressed="true"] small { color: var(--fg); }
+.tryit { display: flex; flex-direction: column; gap: 14px; }
+.try-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 6px 24px; }
+.try-head p { max-width: 56ch; font-size: 0.9rem; }
+#code { width: 100%; min-height: 220px; resize: vertical; font: 0.88rem/1.5 var(--font-mono); color: var(--fg); background: var(--sunken);
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; tab-size: 4; }
+#code:focus-visible { outline: 2px solid var(--head); outline-offset: 1px; }
+#code.dragging { border-color: var(--head); background: color-mix(in srgb, var(--head) 8%, var(--sunken)); }
+.try-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.try-controls label { font-size: 0.85rem; }
+#lexstatus { font-size: 0.85rem; flex: 1 1 260px; min-width: 0; }
+#lexstatus b { color: var(--fg); }
+#lexstatus.err { color: var(--t-err); }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--head); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.note { font-size: 0.86rem; border-left: 3px solid var(--head); background: color-mix(in srgb, var(--head) 8%, var(--surface)); padding: 10px 14px; border-radius: 0 8px 8px 0; }
+.note code { white-space: nowrap; }
+.lede { font-size: 1.02rem; max-width: 62ch; }
+.hero { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px 24px; }
+.nfa-link { display: inline-flex; align-items: center; gap: 14px; text-decoration: none; color: var(--fg);
+  padding: 10px 14px 10px 16px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--head) 55%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--head) 14%, var(--surface)), var(--surface) 70%);
+  transition: border-color .15s, transform .15s; }
+.nfa-link:hover { border-color: var(--head); transform: translateY(-1px); }
+.nfa-link:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; }
+.nfa-link-txt { display: flex; flex-direction: column; font: 600 1rem var(--font-display); line-height: 1.2; }
+.nfa-link-txt small { font: 600 0.66rem var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--head); }
+.nfa-link-arrow { font-size: 1.3rem; color: var(--head); transition: transform .15s; }
+.nfa-link:hover .nfa-link-arrow { transform: translateX(3px); }
+.race .rname a { color: inherit; text-decoration: none; border-bottom: 1px dotted color-mix(in srgb, var(--k) 70%, transparent); }
+.race .rname a:hover { color: var(--k); border-bottom-style: solid; }
+@media (prefers-reduced-motion: reduce) { .nfa-link, .nfa-link-arrow { transition: none; } .nfa-link:hover { transform: none; } }
+.sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 24px; }
+.sub { font: 0.82rem var(--font-mono); color: var(--muted); margin-top: 4px; }
+details.explain { font-size: 0.9rem; }
+details.explain > summary { cursor: pointer; width: fit-content; list-style: none; display: inline-flex; align-items: center; gap: 7px;
+  font: 600 0.8rem var(--font-body); color: var(--head); padding: 2px 0; }
+details.explain > summary::-webkit-details-marker { display: none; }
+details.explain > summary::before { content: "?"; display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%;
+  border: 1.5px solid currentColor; font: 700 0.7rem var(--font-mono); }
+details.explain[open] > summary::before { content: "−"; }
+details.explain > summary:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; border-radius: 4px; }
+details.explain > div { margin-top: 8px; padding: 10px 14px; border-left: 3px solid var(--head); border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--head) 7%, var(--surface)); display: flex; flex-direction: column; gap: 8px; }
+details.explain p { margin: 0; max-width: 74ch; }
+.chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.chain li { display: grid; grid-template-columns: 1.2rem 4.6rem minmax(0, 1fr); gap: 10px; align-items: start; }
+.chain .n { font: 600 0.72rem var(--font-mono); color: var(--head); padding-top: 3px; }
+.chain .lbl { font: 600 0.72rem var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 3px; }
+.chain code { overflow-wrap: anywhere; }
+.selected-rule { display: flex; flex-direction: column; gap: 14px; }
+details.extra > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+details.extra > summary strong { font-family: var(--font-display); font-size: 1.1rem; }
+details.extra[open] > summary { margin-bottom: 12px; }
+details.extra { display: block; }
+details.extra > p { margin-bottom: 12px; }
+.decision > h3, .stream > h3 { margin-bottom: -4px; }
+.pipeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.pipeline li { list-style: none; padding: 14px 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pipeline li:last-child { border-right: 0; }
+.pipeline .n { font: 600 0.72rem var(--font-mono); color: var(--head); }
+.pipeline strong { font-family: var(--font-display); font-size: 1rem; }
+.pipeline span { font-size: 0.84rem; color: var(--muted); line-height: 1.4; }
+.pipeline { padding: 0; margin: 0; }
+@media (max-width: 760px) {
+  .pipeline { grid-template-columns: minmax(0, 1fr); }
+  .pipeline li { border-right: 0; border-bottom: 1px solid var(--line); }
+  .pipeline li:last-child { border-bottom: 0; }
+}
+
+/* ---------- tape ---------- */
+.tape-scroll { min-width: 0; overflow: auto; max-height: 470px; padding: 12px 0 6px; }
+.tape { display: inline-flex; flex-direction: column; gap: 6px; font-family: var(--font-mono); }
+.row { display: flex; align-items: stretch; gap: 0; }
+.gutter { width: 3.2rem; flex: none; font-size: 0.72rem; color: var(--muted); display: flex; align-items: center; }
+.ruler .c { height: 1.1rem; font-size: 0.62rem; color: var(--muted); border: 0; background: none; }
+.ruler .c.tick { color: var(--fg); }
+.c {
+  width: var(--cell); height: 2.6rem; flex: none;
+  display: flex; align-items: center; justify-content: center; position: relative;
+  font-size: 1rem; border: 1px solid var(--line); margin-left: -1px;
+  background: var(--surface); color: var(--fg);
+  transition: background-color .2s, color .2s;
+  cursor: pointer;
+}
+.c.ws-glyph { color: var(--muted); }
+.c.hex { font-size: 0.62rem; color: var(--muted); }
+.c::after { /* final classification, always visible as a strip under the cell */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--k, transparent); opacity: .55;
+}
+.c.done { background: color-mix(in srgb, var(--k) 16%, var(--surface)); }
+.c.done.kind-ws { background: color-mix(in srgb, var(--k) 8%, var(--surface)); }
+.c.active { background: color-mix(in srgb, var(--k) 30%, var(--surface)); outline: 2px solid var(--k); outline-offset: -2px; z-index: 1; }
+.c.active::after { opacity: 1; }
+.c.pending { color: var(--muted); }
+.c.head::before {
+  content: ""; position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--head); border-bottom: 0;
+}
+.c.head { box-shadow: inset 0 3px 0 var(--head); z-index: 2; }
+.kind-kw { --k: var(--t-kw); } .kind-id { --k: var(--t-id); } .kind-num { --k: var(--t-num); }
+.kind-op { --k: var(--t-op); } .kind-ws { --k: var(--t-ws); } .kind-err { --k: var(--t-err); }
+.kind-str { --k: var(--t-str); } .kind-com { --k: var(--t-com); } .kind-punct { --k: var(--t-punct); } .kind-dir { --k: var(--t-dir); }
+.kind-x0 { --k: var(--t-x0); } .kind-x1 { --k: var(--t-x1); } .kind-x2 { --k: var(--t-x2); } .kind-x3 { --k: var(--t-x3); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; background: var(--k); display: inline-block; }
+
+/* ---------- controls ---------- */
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+button {
+  font: 500 0.85rem var(--font-body); color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible, .c:focus-visible, li[tabindex]:focus-visible, tr[tabindex]:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); min-width: 5.5rem; }
+select { font: 500 0.85rem var(--font-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; }
+input[type=range] { flex: 1 1 180px; accent-color: var(--head); min-width: 0; }
+.stepno { font: 500 0.85rem var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+
+/* ---------- decision + token stream ---------- */
+.split { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.decision { display: flex; flex-direction: column; gap: 14px; overflow-x: auto; }
+.where { font-family: var(--font-mono); font-size: 0.86rem; color: var(--muted); overflow-wrap: anywhere; }
+.lookahead { white-space: pre-wrap; }
+.where b { color: var(--fg); font-weight: 600; }
+.lookahead .ahead-hit { background: color-mix(in srgb, var(--head) 25%, transparent); color: var(--fg); border-radius: 2px; }
+
+.race { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.race td { padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+.race tr:first-child td { border-top: 0; }
+.race .rname { white-space: nowrap; font: 600 0.8rem var(--font-mono); }
+.race .rname i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--k); margin-right: 7px; vertical-align: 1px; }
+.race .pat { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }
+.race .barcell { width: 42%; }
+.bar { height: 22px; border-radius: 4px; background: var(--sunken); position: relative; overflow: hidden; }
+.bar > div { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--k) 35%, transparent); border-right: 2px solid var(--k); display: flex; align-items: center; padding-left: 7px; font: 500 0.78rem var(--font-mono); white-space: pre; color: var(--fg); transition: width .25s; }
+.bar.none::after { content: "no match"; position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--muted); }
+.race .len { font: 500 0.8rem var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--muted); }
+.race tr.win td { background: color-mix(in srgb, var(--k) 9%, transparent); }
+.race tr.win .len { color: var(--fg); }
+.pill { display: inline-block; font: 600 0.68rem var(--font-mono); letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.win { color: var(--head); }
+.pill.tie { color: var(--muted); }
+.verdict { border-left: 3px solid var(--k); padding: 10px 14px; background: color-mix(in srgb, var(--k) 7%, var(--surface)); border-radius: 0 8px 8px 0; font-size: 0.92rem; }
+.verdict strong { font-family: var(--font-mono); font-size: 0.88rem; }
+@media (max-width: 560px) {
+  .race .pat { display: none; }
+  .race .barcell { width: 50%; }
+}
+
+.stream { display: flex; flex-direction: column; gap: 10px; }
+.stream ol { list-style: none; margin: 0; padding: 0; max-height: 430px; overflow-y: auto; display: flex; flex-direction: column; }
+.stream li { display: grid; grid-template-columns: 3.6rem 6.2rem minmax(0, 1fr); gap: 8px; align-items: center; padding: 5px 8px; border-radius: 6px; font: 0.82rem var(--font-mono); cursor: pointer; }
+.stream li:hover { background: var(--sunken); }
+.stream li .pos { color: var(--muted); font-variant-numeric: tabular-nums; }
+.stream li .nm { color: var(--k); font-weight: 600; }
+.stream li .lx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream li.future { opacity: .4; }
+.stream li.now { background: color-mix(in srgb, var(--k) 14%, transparent); box-shadow: inset 3px 0 0 var(--head); }
+.stream li.kind-err .lx { color: var(--t-err); }
+
+/* ---------- rules / NFA ---------- */
+.tablewrap { overflow-x: auto; }
+table.rules { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+table.rules th { text-align: left; font: 600 0.7rem var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.rules td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.rules tr[tabindex] { cursor: pointer; }
+table.rules tr[tabindex]:hover td { background: var(--sunken); }
+table.rules tr.sel td { background: color-mix(in srgb, var(--head) 10%, transparent); }
+table.rules tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--head); }
+table.rules .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.post { display: flex; flex-wrap: wrap; gap: 3px; }
+.post span { font: 500 0.78rem var(--font-mono); padding: 1px 6px; border-radius: 4px; background: var(--sunken); white-space: nowrap; }
+.post span.op { background: none; color: var(--head); font-weight: 600; padding: 1px 3px; }
+.post span.class { border: 1px dashed var(--muted); background: none; }
+.post span.more { background: none; color: var(--muted); font-style: italic; }
+.tag { font: 600 0.68rem var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+.nfa-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.nfa-scroll { overflow-x: auto; }
+.nfa-scroll svg { display: block; }
+.nfa-big { padding: 18px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 0.9rem; }
+svg .node { fill: var(--surface); stroke: var(--fg); stroke-width: 1.5; }
+svg .node.split { stroke: var(--muted); stroke-dasharray: 3 3; }
+svg .node.match { stroke: var(--ok); stroke-width: 2; }
+svg .nid { fill: var(--fg); font: 500 12px var(--font-mono); text-anchor: middle; dominant-baseline: central; }
+svg .edge { fill: none; stroke: var(--fg); stroke-width: 1.4; }
+svg .edge.eps { stroke: var(--muted); stroke-dasharray: 4 3; }
+svg .elabel { fill: var(--fg); font: 600 12px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+svg .elabel.eps { fill: var(--muted); font-weight: 400; }
+svg .arrow { fill: var(--fg); }
+svg .arrow.eps { fill: var(--muted); }
+svg .startlbl { fill: var(--muted); font: 11px var(--font-mono); }
+
+/* ---------- part 1 matrix ---------- */
+table.matrix { border-collapse: collapse; font-size: 0.84rem; }
+table.matrix th, table.matrix td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+table.matrix th { font: 600 0.8rem var(--font-mono); }
+table.matrix thead th { color: var(--fg); border-bottom-color: var(--muted); }
+table.matrix tbody th { text-align: left; }
+table.matrix .sc { display: block; font: 400 0.72rem var(--font-body); color: var(--muted); }
+.res { font: 600 0.75rem var(--font-mono); }
+.res.yes { color: var(--ok); }
+.res.no { color: var(--muted); }
+.res small { display: block; font-weight: 400; font-size: 0.68rem; color: var(--muted); }
+
+footer { font-size: 0.8rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="hero">
+      <div><div class="eyebrow">Compiler design · lexical analysis</div><h1>Regex Lexer Generator</h1></div>
+      <a class="nfa-link" id="nfa-link" href="nfa.html">
+        <span class="nfa-link-txt"><small>Steps 1–3</small>Token rules &amp; NFAs</span><span class="nfa-link-arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+    <p class="lede">A lexer is the first stage of a compiler: it splits code into labelled pieces called tokens. Pick a program or scan your own, then watch it happen one step at a time.</p>
+    <div class="programs" id="programs" role="group" aria-label="Program to scan" hidden></div>
+  </header>
+
+  <section class="panel tryit" aria-labelledby="try-h">
+    <div class="try-head">
+      <h2 id="try-h">Scan your own code</h2>
+      <p class="muted">Type, paste, drop or open a file. The language is detected and its rules are applied.</p>
+    </div>
+    <textarea id="code" spellcheck="false" autocomplete="off" aria-label="Code to scan"
+      placeholder="Type or paste C, Python, Java or JavaScript code here, drop a file onto this box, or click a program above to load its code.  Cmd/Ctrl + Enter scans it."></textarea>
+    <div class="try-controls">
+      <button id="openfile" type="button">Open a file…</button>
+      <button id="clear" type="button">Clear</button>
+      <input type="file" id="file" hidden accept=".c,.h,.py,.pyw,.java,.js,.mjs,.cjs,.jsx,.txt,text/*">
+      <label for="lang" class="muted">Language</label>
+      <select id="lang">
+        <option value="auto" selected>Detect automatically</option>
+        <option value="C">C</option><option value="Python">Python</option><option value="Java">Java</option>
+        <option value="JavaScript">JavaScript</option><option value="Other">Other (general rules)</option>
+      </select>
+      <button id="scan" class="primary" type="button">Scan code</button>
+      <span id="lexstatus" class="muted" role="status" aria-live="polite"></span>
+    </div>
+    <p class="note" id="offline" hidden>Click a program above to see its code here. Scanning code you type or edit needs the lexer running on your computer: in the project folder run <code>python3 visualize/serve.py</code>, which opens this page with the code box working.</p>
+  </section>
+
+  <ol class="pipeline" aria-label="How the lexer works">
+    <li><span class="n">1</span><strong>Regex</strong><span>Each token type is a pattern, like <code>[0-9]+</code>.</span></li>
+    <li><span class="n">2</span><strong>Postfix</strong><span>The pattern is rewritten so a program can build it step by step.</span></li>
+    <li><span class="n">3</span><strong>NFA</strong><span>The postfix becomes a machine of states that reads characters.</span></li>
+    <li><span class="n">4</span><strong>Maximal munch</strong><span>At each position every rule tries; the longest match wins.</span></li>
+    <li><span class="n">5</span><strong>Tokens</strong><span>Winners are emitted; whitespace and comments are dropped.</span></li>
+  </ol>
+
+  <section aria-labelledby="scan-h">
+    <div class="sec-head">
+      <div><div class="eyebrow">Steps 4–5 · scanning</div><h2 id="scan-h">Scanning</h2><p class="sub" id="scan-sub"></p></div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <details class="explain">
+      <summary>What is this?</summary>
+      <div>
+        <p>Each cell is one character of the input. The <b>orange marker</b> is the read head: where the lexer is right now. A cell's colour is the token type it ended up in. Grey cells are whitespace or comments, which are read but thrown away. Red cells are characters no rule could match.</p>
+        <p>Press <b>Next</b> or <b>Play</b> to move the read head. Click any cell or token to jump straight to it; the arrow keys step too.</p>
+      </div>
+    </details>
+
+    <div class="panel" style="display:flex;flex-direction:column;gap:14px">
+      <div class="tape-scroll"><div class="tape" id="tape"></div></div>
+      <div class="legend" id="legend"></div>
+      <div class="controls">
+        <button id="prev" aria-label="Previous step">◀ Prev</button>
+        <button id="play" class="primary">▶ Play</button>
+        <button id="next" aria-label="Next step">Next ▶</button>
+        <button id="nexterr" hidden>Next error</button>
+        <input type="range" id="step" min="0" value="0" aria-label="Scan step">
+        <span class="stepno" id="stepno"></span>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="panel decision" aria-live="polite">
+        <h3>Why this token?</h3>
+        <details class="explain">
+          <summary>What is this?</summary>
+          <div>
+            <p>At every position, <b>every rule</b> runs its NFA on the text ahead and reports how many characters it can match. Each bar shows that length.</p>
+            <p>This is <b>maximal munch</b>: the <b>longest</b> match wins. If two rules match the same length, the one with the <b>lower priority number</b> wins, which is why <code>if</code> becomes a KEYWORD rather than an IDENT, while <code>iffy</code> is an IDENT because it is longer.</p>
+            <p>If no rule matches at all, the lexer reports an error, skips that one character and carries on.</p>
+          </div>
+        </details>
+        <div class="where" id="where"></div>
+        <table class="race" id="race"></table>
+        <div class="verdict" id="verdict"></div>
+      </div>
+      <div class="panel stream">
+        <h3>Token stream</h3>
+        <details class="explain">
+          <summary>What is this?</summary>
+          <div><p>The lexer's output, in order, with line:column. This list is what the next compiler stage, the parser, receives. Whitespace and comments are not in it; errors are shown in red.</p></div>
+        </details>
+        <ol id="stream"></ol>
+      </div>
+    </div>
+  </section>
+
+  <details class="panel extra" id="demo-box">
+    <summary><span class="eyebrow">Optional</span> <strong>Try a single pattern</strong> <span class="muted">matching a whole string vs. just its start</span></summary>
+    <p class="muted">A string counts as a match only if the pattern covers all of it. Often a pattern matches just the start, shown as "prefix 1/5". That is exactly what the scanner relies on: at each position it only needs the longest start that matches.</p>
+    <div class="tablewrap"><table class="matrix" id="matrix"></table></div>
+  </details>
+</div>
+
+<script type="application/json" id="trace">__TRACE__</script>
+<script>
+(function () {
+  /* The page holds one trace per program; switching re-renders everything from that trace.
+     Listeners on long-lived elements go through `signal`, so a re-render drops the old ones. */
+  const RUNS = JSON.parse(document.getElementById('trace').textContent);
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  let controller = null, stopCurrent = () => {};
+  const setKeyOf = (src) => src === 'built-in general rules' ? 'general' : src.split('/').pop().replace(/\.[^.]*$/, '').toLowerCase();
+
+  function render(D) {
+  if (controller) { stopCurrent(); controller.abort(); }
+  controller = new AbortController();
+  const signal = controller.signal;
+  ['stats', 'legend', 'tape', 'stream', 'race', 'matrix'].forEach(id => { $(id).textContent = ''; });
+  const nfaHref = (rule) => 'nfa.html#' + setKeyOf(D.rulesSource) + (rule ? '-' + rule : '');
+  $('nfa-link').href = nfaHref();
+  const src = D.source, steps = D.steps, rules = D.rules;
+
+  /* Colors come from the rule's name when it is a familiar one, otherwise from its position. */
+  const NAME_KIND = { KEYWORD: 'kw', IDENT: 'id', IDENTIFIER: 'id', NUMBER: 'num', INT: 'num', FLOAT: 'num',
+    STRING: 'str', CHAR: 'str', COMMENT: 'com', OP: 'op', OPERATOR: 'op', PUNCT: 'punct', WS: 'ws', WHITESPACE: 'ws', DIRECTIVE: 'dir' };
+  const kindOfRule = (r) => { const n = rules[r].name.toUpperCase(); return n.startsWith('KW') ? 'kw' : NAME_KIND[n] || 'x' + (r % 4); };
+  const kindOfStep = (s) => s.kind === 'error' ? 'err' : kindOfRule(s.rule);
+
+  /* The lexer works on bytes; the JSON carries one char per byte. Decode UTF-8 only for display. */
+  const utf8 = (s) => { try { return decodeURIComponent(escape(s)); } catch (e) { return s; } };
+  const esc = (s) => s.replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\f/g, '\\f').replace(/\v/g, '\\v');
+  const show = (ch) => ch.charCodeAt(0) >= 128 ? '\\x' + ch.charCodeAt(0).toString(16) : esc(ch);
+  const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+  const lexeme = (s) => utf8(src.substr(s.pos, s.len));
+
+  $('scan-h').textContent = 'Scanning ' + D.sourceName.split('/').pop();
+  $('scan-sub').textContent = 'using ' + D.rulesSource;
+
+  /* ---------- stats ---------- */
+  const nTok = steps.filter(s => s.kind === 'token').length;
+  const nErr = steps.filter(s => s.kind === 'error').length;
+  const nSkip = steps.filter(s => s.kind === 'skip').length;
+  const nLines = src.split('\n').length - (src.endsWith('\n') ? 1 : 0);
+  [['lines', nLines], ['tokens', nTok], ['errors', nErr], ['rules', rules.length]]
+    .forEach(([l, v]) => { const s = el('span'); s.append(el('b', null, v.toLocaleString()), ' ' + (v === 1 ? l.replace(/s$/, '') : l)); $('stats').append(s); });
+
+  /* ---------- legend ---------- */
+  const byKind = {};
+  rules.forEach((r, i) => (byKind[kindOfRule(i)] = byKind[kindOfRule(i)] || []).push(r.name));
+  Object.entries(byKind).forEach(([k, names]) => { const s = el('span', 'kind-' + k); s.append(el('i', 'sw'), names.join(' / ') + (rules.find(r => names.includes(r.name) && r.skip) ? ' (skipped)' : '')); $('legend').append(s); });
+  { const s = el('span', 'kind-err'); s.append(el('i', 'sw'), 'error'); $('legend').append(s); }
+  { const s = el('span'); const h = el('i', 'sw'); h.style.background = 'var(--head)'; s.append(h, 'read head'); $('legend').append(s); }
+
+  /* ---------- tape ---------- */
+  const stepOf = new Int32Array(src.length);
+  steps.forEach((s, i) => { for (let k = 0; k < s.len; k++) stepOf[s.pos + k] = i; });
+  const cells = new Array(src.length);
+  const lines = [[]];
+  for (let p = 0; p < src.length; p++) { lines[lines.length - 1].push(p); if (src[p] === '\n' && p < src.length - 1) lines.push([]); }
+  const maxCols = Math.max(...lines.map(l => l.length));
+  const tape = $('tape');
+  const ruler = el('div', 'row ruler'); ruler.append(el('div', 'gutter', 'col'));
+  for (let c = 1; c <= maxCols; c++) ruler.append(el('div', 'c' + (c % 5 === 0 || c === 1 ? ' tick' : ''), c % 5 === 0 || c === 1 ? c : '·'));
+  tape.append(ruler);
+  const frag = document.createDocumentFragment();
+  lines.forEach((ps, li) => {
+    const row = el('div', 'row'); row.append(el('div', 'gutter', 'line ' + (li + 1)));
+    ps.forEach((p, ci) => {
+      const ch = src[p], code = ch.charCodeAt(0);
+      let cls = 'c pending kind-' + kindOfStep(steps[stepOf[p]]), g = ch;
+      if (ch === ' ') { g = '·'; cls += ' ws-glyph'; }
+      else if (ch === '\n') { g = '↵'; cls += ' ws-glyph'; }
+      else if (ch === '\t') { g = '→'; cls += ' ws-glyph'; }
+      else if (ch === '\r') { g = '␍'; cls += ' ws-glyph'; }
+      else if (code >= 128 || code < 32) { g = code.toString(16).padStart(2, '0'); cls += ' hex'; }
+      const c = el('div', cls, g);
+      c.title = `line ${li + 1}, col ${ci + 1}: '${show(ch)}'`;
+      c.dataset.p = p;
+      cells[p] = c; row.append(c);
+    });
+    frag.append(row);
+  });
+  tape.append(frag);
+  tape.addEventListener('click', (e) => { const c = e.target.closest('[data-p]'); if (c) { stop(); go(stepOf[+c.dataset.p]); } }, { signal });
+
+  /* ---------- token stream ---------- */
+  const streamItems = [];       // emitted tokens and errors, in step order
+  const streamFor = new Int32Array(steps.length);   // step -> index of first stream item at or after it
+  const ol = $('stream');
+  steps.forEach((s, i) => {
+    streamFor[i] = streamItems.length;
+    if (s.kind === 'skip') return;
+    const li = el('li', 'future kind-' + kindOfStep(s));
+    li.tabIndex = 0;
+    li.append(el('span', 'pos', `${s.line}:${s.col}`), el('span', 'nm', s.kind === 'error' ? 'ERROR' : rules[s.rule].name),
+              el('span', 'lx', s.kind === 'error' ? `'${show(src[s.pos])}' skipped` : `'${clip(esc(lexeme(s)), 80)}'`));
+    li.dataset.step = i; streamItems.push(li); ol.append(li);
+  });
+  ol.addEventListener('click', (e) => { const li = e.target.closest('li'); if (li) { stop(); go(+li.dataset.step); } }, { signal });
+  ol.addEventListener('keydown', (e) => { const li = e.target.closest('li'); if (li && e.key === 'Enter') { stop(); go(+li.dataset.step); } }, { signal });
+
+  /* ---------- decision panel ---------- */
+  function renderDecision(i) {
+    const s = steps[i];
+    const where = $('where'); where.textContent = '';
+    const look = src.substr(s.pos, 24);
+    where.append('At ', el('b', null, `line ${s.line}, col ${s.col}`), ', reading ');
+    const la = el('span', 'lookahead');
+    const vis = (t) => utf8(t).replace(/\n/g, '↵').replace(/\t/g, '→');
+    la.append('“', el('span', 'ahead-hit', vis(look.slice(0, Math.min(s.len, 24)))), vis(look.slice(Math.min(s.len, 24))) + (s.pos + 24 < src.length ? '…' : '') + '”');
+    where.append(la);
+
+    const best = s.kind === 'error' ? 0 : s.len;
+    const maxLen = Math.max(1, ...s.cands);
+    const race = $('race'); race.textContent = '';
+    s.cands.forEach((len, r) => {
+      const tr = el('tr', 'kind-' + kindOfRule(r));
+      const isWin = r === s.rule;
+      const isTie = !isWin && len > 0 && len === best;
+      if (isWin) tr.classList.add('win');
+      const n = el('td', 'rname'); const ln = el('a', null, rules[r].name); ln.href = nfaHref(rules[r].name); ln.title = `See the ${rules[r].name} NFA`; n.append(el('i'), ln);
+      const bc = el('td', 'barcell'); const bar = el('div', 'bar');
+      if (len > 0) { const f = el('div', null, clip(utf8(src.substr(s.pos, len)).replace(/\n/g, '↵'), 40)); f.style.width = (len / maxLen * 100) + '%'; bar.append(f); }
+      else bar.classList.add('none');
+      bc.append(bar);
+      const lc = el('td', 'len');
+      if (isWin) lc.append(el('span', 'pill win', 'wins'), ' ');
+      else if (isTie) lc.append(el('span', 'pill tie', 'tie'), ' ');
+      lc.append(len > 0 ? `${len} char${len > 1 ? 's' : ''}` : '–');
+      tr.append(n, bc, lc); race.append(tr);
+    });
+
+    const v = $('verdict'); v.textContent = ''; v.className = 'verdict kind-' + kindOfStep(s);
+    const strong = (t) => el('strong', null, t);
+    if (s.kind === 'error') {
+      v.append('No rule matches ', strong(`'${show(src[s.pos])}'`), '. The scanner reports an error, skips this one character and carries on.');
+      return;
+    }
+    const W = rules[s.rule];
+    const others = s.cands.map((l, r) => r).filter(r => r !== s.rule);
+    const ties = others.filter(r => s.cands[r] === s.len);
+    const shorter = others.filter(r => s.cands[r] > 0 && s.cands[r] < s.len);
+    if (ties.length) {
+      v.append(strong(W.name), ` and ${ties.map(r => rules[r].name).join(', ')} both match ${s.len} characters. The tie goes to the lower priority number: `,
+               strong(`${W.name} = ${W.priority}`), ' vs ', strong(ties.map(r => `${rules[r].name} = ${rules[r].priority}`).join(', ')), '.');
+    } else if (shorter.length) {
+      v.append(strong(W.name), ` has the longest match (${s.len} chars). `, shorter.map(r => `${rules[r].name} got only ${s.cands[r]}`).join(', ') + '.');
+    } else {
+      v.append('Only ', strong(W.name), ` matches here (${s.len} char${s.len > 1 ? 's' : ''}).`);
+    }
+    v.append(' ');
+    if (W.skip) v.append(strong(W.name), ' is a skip rule, so nothing is emitted.');
+    else v.append('Emit ', strong(`${W.name} '${clip(esc(lexeme(s)), 60)}'`), '.');
+  }
+
+  /* ---------- stepping (only touches cells whose state changes) ---------- */
+  let cur = -1, timer = null, headCell = null;
+  const slider = $('step'); slider.max = steps.length - 1;
+  const setStep = (i, state) => { const s = steps[i]; for (let k = 0; k < s.len; k++) { const c = cells[s.pos + k]; c.classList.remove('done', 'active', 'pending'); c.classList.add(state); } };
+  const setItem = (i, state) => { const j = streamFor[i]; const li = streamItems[j]; if (li && +li.dataset.step === i) { li.classList.toggle('now', state === 'active'); li.classList.toggle('future', state === 'pending'); } };
+  function go(i) {
+    i = Math.max(0, Math.min(steps.length - 1, i));
+    if (cur >= 0) {
+      const lo = Math.min(cur, i), hi = Math.max(cur, i);
+      for (let k = lo; k <= hi; k++) { const st = k < i ? 'done' : k === i ? 'active' : 'pending'; setStep(k, st); setItem(k, st); }
+    } else {
+      for (let k = 0; k <= i; k++) { const st = k < i ? 'done' : 'active'; setStep(k, st); setItem(k, st); }
+    }
+    cur = i;
+    slider.value = cur;
+    $('stepno').textContent = `step ${(cur + 1).toLocaleString()} / ${steps.length.toLocaleString()}`;
+    if (headCell) headCell.classList.remove('head');
+    headCell = cells[steps[cur].pos]; headCell.classList.add('head');
+    const now = streamItems[streamFor[cur]];
+    if (now) { const t = now.offsetTop - ol.offsetTop; if (t < ol.scrollTop || t > ol.scrollTop + ol.clientHeight - 30) ol.scrollTop = t - 60; }
+    const box = tape.parentElement, hb = headCell.getBoundingClientRect(), bb = box.getBoundingClientRect();
+    if (hb.left < bb.left + 50 || hb.right > bb.right - 50) box.scrollLeft += hb.left - bb.left - bb.width / 3;
+    if (hb.top < bb.top + 20 || hb.bottom > bb.bottom - 20) box.scrollTop += hb.top - bb.top - bb.height / 3;
+    renderDecision(cur);
+  }
+  function stop() { clearInterval(timer); timer = null; $('play').textContent = '▶ Play'; }
+  function play() {
+    clearInterval(timer);
+    $('play').textContent = '❚❚ Pause';
+    timer = setInterval(() => { if (cur >= steps.length - 1) stop(); else go(cur + 1); }, 700);
+  }
+  $('play').addEventListener('click', () => { if (timer) return stop(); if (cur >= steps.length - 1) go(0); play(); }, { signal });
+  stopCurrent = stop;
+  $('next').addEventListener('click', () => { stop(); go(cur + 1); }, { signal });
+  $('prev').addEventListener('click', () => { stop(); go(cur - 1); }, { signal });
+  $('nexterr').addEventListener('click', () => { stop(); const j = steps.findIndex((s, k) => k > cur && s.kind === 'error'); go(j >= 0 ? j : steps.findIndex(s => s.kind === 'error')); }, { signal });
+  $('nexterr').hidden = nErr === 0;   // only offered when the input has errors
+  slider.addEventListener('input', () => { stop(); go(+slider.value); }, { signal });
+  document.addEventListener('keydown', (e) => {
+    if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.key === 'ArrowRight') { stop(); go(cur + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stop(); go(cur - 1); e.preventDefault(); }
+  }, { signal });
+
+  /* ---------- part 1 matrix ---------- */
+  const m = $('matrix');
+  const mh = el('tr'); mh.append(el('th', null, 'pattern'));
+  D.demo[0].results.forEach(r => mh.append(el('th', null, `"${r.input}"`)));
+  const mth = el('thead'); mth.append(mh); m.append(mth);
+  const mtb = el('tbody'); m.append(mtb);
+  D.demo.forEach((d, di) => {
+    const tr = el('tr'); const th = el('th'); th.append(el('code', null, d.pattern));
+    const sc = el('span', 'sc'); const a = el('a', null, `${d.nfa.states.length} NFA states · view →`); a.href = 'nfa.html#patterns-' + di;
+    sc.append(a); th.append(sc); tr.append(th);
+    d.results.forEach(r => {
+      const td = el('td'); const sp = el('span', 'res ' + (r.match ? 'yes' : 'no'), r.match ? '✓ match' : '✗ reject');
+      if (!r.match && r.len > 0) sp.append(el('small', null, `prefix ${r.len}/${r.input.length}`));
+      td.append(sp); tr.append(td);
+    });
+    mtb.append(tr);
+  });
+
+  go(0);
+  }
+
+  /* ---------- program switcher (clicking a program also puts its code in the box) ---------- */
+  const codeBox = $('code'), status = $('lexstatus'), scanBtn = $('scan');
+  const setStatus = (parts, isErr) => { status.textContent = ''; status.classList.toggle('err', !!isErr); status.append(...parts); };
+  // The trace holds one char per byte; decode UTF-8 so the box shows real text.
+  const decode = (s) => { try { return decodeURIComponent(escape(s)); } catch (e) { return s; } };
+  const codeOf = (run) => run.code != null ? run.code : decode(run.trace.source);
+  const nameOf = (run) => run.trace.sourceName.split('/').pop();
+
+  let filename = null, userSlot = -1, busy = false;
+  let loadedFrom = -1;        // index of the example currently in the box, if unedited text came from one
+  let draft = null;           // code the user typed, kept when an example replaced it
+
+  const bar = $('programs');
+  const buttons = [];
+  const fillButton = (b, run) => { b.textContent = ''; b.append(nameOf(run), el('small', null, run.label)); };
+  function addButton(i) {
+    const b = el('button'); b.type = 'button';
+    fillButton(b, RUNS[i]);
+    b.addEventListener('click', () => { select(i); fillBox(i); });
+    buttons.push(b); bar.append(b);
+    bar.hidden = RUNS.length < 2;
+  }
+  function select(i) {
+    current = i;
+    buttons.forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
+    render(RUNS[i].trace);
+  }
+
+  function fillBox(i) {
+    const run = RUNS[i], cur = codeBox.value;
+    // Keep what the user typed unless it is just an example (or empty) being swapped for another.
+    if (cur.trim() && !RUNS.some(r => codeOf(r) === cur)) draft = { code: cur, filename };
+    codeBox.value = codeOf(run);
+    filename = run.code != null ? run.filename : nameOf(run);
+    loadedFrom = run.code != null ? -1 : i;
+    $('lang').value = 'auto';
+    const parts = run.code != null
+      ? ['Your last scanned code is back in the box.']
+      : ['Loaded ', el('b', null, nameOf(run)), ' into the box. Edit it and press Scan code to see how your changes are tokenized.'];
+    if (draft) {
+      const restore = el('button', 'linkbtn', 'Restore what you typed');
+      restore.type = 'button';
+      restore.addEventListener('click', () => {
+        codeBox.value = draft.code; filename = draft.filename; loadedFrom = -1; draft = null;
+        setStatus(['Your code is back.']); codeBox.focus();
+      });
+      parts.push(' ', restore);
+    }
+    setStatus(parts);
+  }
+
+  bar.append(el('span', 'lbl', 'Program'));
+  RUNS.forEach((_, i) => addButton(i));
+
+  // Remember the code box, your scan and the chosen program for this tab, so coming back
+  // from the NFA page puts everything where you left it. Storage can be unavailable: then it just starts fresh.
+  const SAVE_KEY = 'lexer-visualizer-state';
+  let current = 0;
+  function save() {
+    try { sessionStorage.setItem(SAVE_KEY, JSON.stringify({ code: codeBox.value, filename, loadedFrom, current,
+      userRun: userSlot >= 0 ? RUNS[userSlot] : null })); } catch (_) {}
+  }
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); } catch (_) {}
+  if (saved && saved.userRun && saved.userRun.trace) { RUNS.push(saved.userRun); userSlot = RUNS.length - 1; addButton(userSlot); }
+  if (saved) { codeBox.value = saved.code || ''; filename = saved.filename || null; loadedFrom = saved.loadedFrom ?? -1; }
+  select(saved && saved.current < RUNS.length ? saved.current : 0);   // the box starts empty unless you had code in it
+  window.addEventListener('pagehide', save);
+  codeBox.addEventListener('change', save);
+
+  /* ---------- scan your own code (needs visualize/serve.py) ---------- */
+  const MAX_BYTES = 200000;
+
+  function loadFile(file) {
+    if (!file) return;
+    if (file.size > MAX_BYTES) { setStatus([`${file.name} is ${Math.round(file.size / 1000)} KB; the limit is ${MAX_BYTES / 1000} KB.`], true); return; }
+    file.text().then(text => {
+      codeBox.value = text; filename = file.name; loadedFrom = -1;
+      setStatus(['Opened ', el('b', null, file.name), '. Press Scan code.']);
+    }).catch(() => setStatus([`Couldn't read ${file.name}.`], true));
+  }
+  $('openfile').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', (e) => { loadFile(e.target.files[0]); e.target.value = ''; });
+  $('clear').addEventListener('click', () => {
+    codeBox.value = ''; filename = null; loadedFrom = -1; draft = null;
+    setStatus([]); codeBox.focus();
+  });
+  codeBox.addEventListener('dragover', (e) => { e.preventDefault(); codeBox.classList.add('dragging'); });
+  codeBox.addEventListener('dragleave', () => codeBox.classList.remove('dragging'));
+  codeBox.addEventListener('drop', (e) => { e.preventDefault(); codeBox.classList.remove('dragging'); loadFile(e.dataTransfer.files[0]); });
+  codeBox.addEventListener('input', () => { if (!codeBox.value) filename = null; });
+  codeBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); scan(); return; }
+    if (e.key === 'Tab' && !e.shiftKey) {          // indent instead of leaving the box; Esc then Tab leaves it
+      e.preventDefault();
+      const a = codeBox.selectionStart, b = codeBox.selectionEnd;
+      codeBox.setRangeText('    ', a, b, 'end');
+    }
+    if (e.key === 'Escape') codeBox.blur();
+  });
+
+  const showScan = () => $('scan-h').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+
+  async function scan() {
+    if (busy) return;
+    const code = codeBox.value;
+    if (!code.trim()) { setStatus(['Type, paste or open some code first.'], true); codeBox.focus(); return; }
+    // An unchanged example is already scanned: just show it (works without the server too).
+    if (loadedFrom >= 0 && code === codeOf(RUNS[loadedFrom])) {
+      select(loadedFrom);
+      setStatus(['That is ', el('b', null, nameOf(RUNS[loadedFrom])), ' unchanged, so its scan is shown below. Edit the code to scan your own version.']);
+      showScan();
+      return;
+    }
+    // If the box no longer holds the example's code (it was replaced, not edited), treat it as new code:
+    // no "(edited)" label, and no file name forcing that example's language.
+    if (loadedFrom >= 0) {
+      const firstLine = codeOf(RUNS[loadedFrom]).split('\n').find(l => l.trim()) || '';
+      if (!code.includes(firstLine)) { loadedFrom = -1; filename = null; }
+    }
+    busy = true; scanBtn.disabled = true; setStatus(['Scanning…']);
+    try {
+      const res = await fetch('api/lex', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, language: $('lang').value, filename }) });
+      const data = await res.json().catch(() => ({ error: 'The lexer sent back something unreadable.' }));
+      if (!res.ok || data.error) throw new Error(data.error || `The lexer answered ${res.status}.`);
+      data.code = code; data.filename = filename;
+      if (loadedFrom >= 0) data.trace.sourceName = `${nameOf(RUNS[loadedFrom])} (edited)`;
+      if (userSlot < 0) { RUNS.push(data); userSlot = RUNS.length - 1; addButton(userSlot); }
+      else { RUNS[userSlot] = data; fillButton(buttons[userSlot], data); }
+      select(userSlot); save();
+      const t = data.trace, d = data.detected;
+      const toks = t.steps.filter(s => s.kind === 'token').length, errs = t.steps.filter(s => s.kind === 'error').length;
+      setStatus([el('b', null, d.language), ` (${d.reason}) → ${d.rules} · ${toks} tokens, ${errs} error${errs === 1 ? '' : 's'}`]);
+      showScan();
+    } catch (err) {
+      setStatus([err instanceof TypeError ? "Couldn't reach the local lexer. Is visualize/serve.py still running?" : err.message], true);
+    } finally {
+      busy = false; scanBtn.disabled = false;
+    }
+  }
+  scanBtn.addEventListener('click', scan);
+
+  // Scanning new code needs visualize/serve.py. Without it the box still shows the examples' code.
+  (location.protocol.startsWith('http') ? fetch('api/health').then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null))
+    .then(ok => {
+      if (ok && ok.ok) return;
+      $('offline').hidden = false;
+      ['openfile', 'lang'].forEach(id => { $(id).disabled = true; });
+      codeBox.readOnly = true;
+      codeBox.placeholder = 'Click a program above to see its code here. To scan your own code, start the local lexer (see below).';
+    });
+})();
+</script>

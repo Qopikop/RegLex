@@ -1,0 +1,2 @@
+if x1 = 42 + count
+while total * 2 @ ste 1-afa

@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Token Rules and NFAs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a sticky top bar (back link, title, rule-set tabs); below it a rule list
+   on the left and the selected rule on the right: regex -> postfix -> NFA, a large
+   zoomable automaton, and a panel that runs a string through it state by state. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --sunken: #e8ecf2; --fg: #141821; --muted: #5b6475; --line: #d3d9e3;
+  --head: #d4720b; --ok: #0a8a50; --bad: #d02c1f;
+  --t-kw: #7a3fd6; --t-id: #1f63d1; --t-num: #0a8a6a; --t-op: #c2306f; --t-ws: #8b93a3; --t-str: #8a6a00;
+  --t-com: #5d7f35; --t-punct: #4c5566; --t-dir: #0b7d93; --t-x0: #b4530a; --t-x1: #0891b2; --t-x2: #5e8f0c; --t-x3: #c0267a;
+  --grid: rgba(20, 24, 33, 0.07);
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1218; --surface: #171b24; --sunken: #1f2430; --fg: #e6e9ef; --muted: #98a1b3; --line: #2c3342;
+    --head: #f59a34; --ok: #44d08a; --bad: #ff6b5e;
+    --t-kw: #b48cff; --t-id: #6ea2ff; --t-num: #3ccfa4; --t-op: #ff7cb0; --t-ws: #7d8697; --t-str: #e2c35a;
+    --t-com: #9cc06e; --t-punct: #a9b1c0; --t-dir: #5cc8e0; --t-x0: #f0a35c; --t-x1: #5fd0e8; --t-x2: #a8d65e; --t-x3: #f472b6;
+    --grid: rgba(230, 233, 239, 0.06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1218; --surface: #171b24; --sunken: #1f2430; --fg: #e6e9ef; --muted: #98a1b3; --line: #2c3342;
+  --head: #f59a34; --ok: #44d08a; --bad: #ff6b5e;
+  --t-kw: #b48cff; --t-id: #6ea2ff; --t-num: #3ccfa4; --t-op: #ff7cb0; --t-ws: #7d8697; --t-str: #e2c35a;
+  --t-com: #9cc06e; --t-punct: #a9b1c0; --t-dir: #5cc8e0; --t-x0: #f0a35c; --t-x1: #5fd0e8; --t-x2: #a8d65e; --t-x3: #f472b6;
+  --grid: rgba(230, 233, 239, 0.06);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+.eyebrow { font: 600 0.7rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.muted { color: var(--muted); }
+button { font: 500 0.85rem var(--font-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, a:focus-visible, input:focus-visible, li[tabindex]:focus-visible, summary:focus-visible { outline: 2px solid var(--head); outline-offset: 2px; }
+.kind-kw { --k: var(--t-kw); } .kind-id { --k: var(--t-id); } .kind-num { --k: var(--t-num); } .kind-op { --k: var(--t-op); }
+.kind-ws { --k: var(--t-ws); } .kind-str { --k: var(--t-str); } .kind-com { --k: var(--t-com); } .kind-punct { --k: var(--t-punct); }
+.kind-dir { --k: var(--t-dir); } .kind-x0 { --k: var(--t-x0); } .kind-x1 { --k: var(--t-x1); } .kind-x2 { --k: var(--t-x2); } .kind-x3 { --k: var(--t-x3); }
+
+/* ---------- top bar ---------- */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.top-inner { max-width: 1240px; margin: 0 auto; padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px 24px; }
+.back { display: inline-flex; align-items: center; gap: 6px; font: 600 0.85rem var(--font-body); color: var(--fg); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; background: var(--surface); }
+.back:hover { border-color: var(--head); color: var(--head); }
+.titles h1 { font-size: 1.45rem; line-height: 1.15; margin-top: 3px; }
+.sets { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.sets button { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 12px; text-align: left; }
+.sets button small { font: 400 0.7rem var(--font-mono); color: var(--muted); }
+.sets button[aria-pressed="true"] { border-color: var(--head); box-shadow: inset 0 -3px 0 var(--head); }
+@media (max-width: 900px) {
+  .top-inner { grid-template-columns: minmax(0, 1fr); }
+  .sets { justify-content: flex-start; }
+  .top { position: static; }
+}
+
+/* ---------- layout ---------- */
+.layout { max-width: 1240px; margin: 0 auto; padding-block: 22px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+
+/* ---------- rule list ---------- */
+.rule-list { position: sticky; top: 92px; max-height: calc(100vh - 110px); display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 900px) { .rule-list { position: static; max-height: 300px; } }
+.list-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.list-head span { font-size: 0.8rem; }
+#rulelist { list-style: none; margin: 0; padding: 6px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+#rulelist li { padding: 9px 11px; border-radius: 8px; cursor: pointer; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+#rulelist li:hover { background: var(--sunken); }
+#rulelist li[aria-selected="true"] { background: color-mix(in srgb, var(--k) 13%, var(--surface)); box-shadow: inset 3px 0 0 var(--k); }
+#rulelist .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--k); }
+#rulelist .nm { font: 600 0.84rem var(--font-mono); color: var(--k); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rulelist .st { font: 0.72rem var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+#rulelist .pt { grid-column: 2 / 4; font: 0.74rem var(--font-mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- detail ---------- */
+.detail { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.detail-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 10px 24px; }
+.detail-head h2 { font-size: 2rem; line-height: 1.1; color: var(--k); font-family: var(--font-mono); font-weight: 600; letter-spacing: -0.02em; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pill { font: 600 0.72rem var(--font-mono); padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.pill b { color: var(--fg); font-weight: 600; }
+details.explain { font-size: 0.9rem; max-width: 560px; }
+details.explain > summary { cursor: pointer; width: fit-content; list-style: none; display: inline-flex; align-items: center; gap: 7px; font: 600 0.8rem var(--font-body); color: var(--head); }
+details.explain > summary::-webkit-details-marker { display: none; }
+details.explain > summary::before { content: "?"; display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 0.7rem var(--font-mono); }
+details.explain[open] > summary::before { content: "−"; }
+details.explain > div { margin-top: 8px; padding: 10px 14px; border-left: 3px solid var(--head); border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--head) 7%, var(--surface)); display: flex; flex-direction: column; gap: 8px; }
+details.explain p { margin: 0; }
+
+.chain { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr) auto minmax(0, .8fr); align-items: stretch; gap: 10px; }
+.stage { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.stage .hd { display: flex; align-items: baseline; gap: 8px; }
+.stage .n { font: 600 0.72rem var(--font-mono); color: var(--head); }
+.stage .lbl { font: 600 0.7rem var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.stage code { font-size: 0.86rem; overflow-wrap: anywhere; line-height: 1.6; }
+.stage .big { font: 600 1.4rem var(--font-display); }
+.chain .arrow { align-self: center; color: var(--head); font-size: 1.3rem; }
+@media (max-width: 760px) {
+  .chain { grid-template-columns: minmax(0, 1fr); }
+  .chain .arrow { transform: rotate(90deg); justify-self: center; }
+}
+.post { display: flex; flex-wrap: wrap; gap: 3px; max-height: 9.5em; overflow-y: auto; }
+.post span { font: 500 0.78rem var(--font-mono); padding: 1px 6px; border-radius: 4px; background: var(--sunken); white-space: nowrap; }
+.post span.op { background: none; color: var(--head); font-weight: 600; padding: 1px 3px; }
+.post span.class { border: 1px dashed var(--muted); background: none; }
+
+/* ---------- canvas ---------- */
+.canvas { overflow: hidden; }
+.canvas-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.78rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { overflow: visible; }
+.zoom { display: flex; gap: 4px; }
+.zoom button { min-width: 34px; padding: 5px 9px; }
+.canvas-scroll { overflow: auto; min-height: 320px; max-height: 70vh; display: grid; place-items: center;
+  background-color: var(--surface); background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px); background-size: 22px 22px; }
+.canvas-scroll svg { display: block; margin: 24px; }
+.nfa-big { padding: 28px; max-width: 520px; text-align: center; color: var(--muted); }
+.nfa-big b { color: var(--fg); }
+svg .node { fill: var(--surface); stroke: var(--fg); stroke-width: 1.6; transition: fill .2s, stroke .2s; }
+svg .node.split { stroke: var(--muted); stroke-dasharray: 3 3; }
+svg .node.match { stroke: var(--ok); stroke-width: 2.2; }
+svg .node.start { stroke: var(--head); stroke-width: 2.4; }
+svg .node.passed { fill: color-mix(in srgb, var(--head) 12%, var(--surface)); }
+svg .node.active { fill: color-mix(in srgb, var(--head) 38%, var(--surface)); stroke: var(--head); stroke-width: 2.6; }
+svg .node.match.active { fill: color-mix(in srgb, var(--ok) 40%, var(--surface)); stroke: var(--ok); }
+svg .nid { fill: var(--fg); font: 500 12px var(--font-mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+svg .edge { fill: none; stroke: var(--fg); stroke-width: 1.5; }
+svg .edge.eps { stroke: var(--muted); stroke-dasharray: 5 4; }
+svg .elabel { fill: var(--fg); font: 600 12.5px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: var(--surface); stroke-width: 6px; stroke-linejoin: round; }
+svg .elabel.eps { fill: var(--muted); font-weight: 400; }
+svg .arrowhead { fill: var(--fg); } svg .arrowhead.eps { fill: var(--muted); } svg .arrowhead.start { fill: var(--head); }
+svg .startlbl { fill: var(--head); font: 600 11px var(--font-mono); }
+svg .edge.start { stroke: var(--head); stroke-width: 2; }
+@media (prefers-reduced-motion: reduce) { svg .node { transition: none; } }
+
+/* ---------- run a string ---------- */
+.runner { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.runner p { margin: 0; max-width: 72ch; font-size: 0.9rem; }
+.run-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#test { flex: 1 1 220px; min-width: 0; font: 0.95rem var(--font-mono); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); color: var(--fg); }
+.chars { display: flex; flex-wrap: wrap; gap: 3px; font-family: var(--font-mono); }
+.chars .ch { min-width: 30px; height: 36px; padding: 0 6px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 0.95rem; position: relative; cursor: pointer; }
+.chars .ch.read { background: color-mix(in srgb, var(--head) 14%, var(--surface)); }
+.chars .ch.inmatch { border-color: var(--ok); box-shadow: inset 0 -3px 0 var(--ok); }
+.chars .ch.next { outline: 2px solid var(--head); outline-offset: -2px; }
+.chars .ch.ws { color: var(--muted); }
+.chars .ch.dead { color: var(--muted); opacity: .55; }
+.verdict { border-left: 3px solid var(--head); padding: 10px 14px; background: color-mix(in srgb, var(--head) 7%, var(--surface)); border-radius: 0 8px 8px 0; font-size: 0.92rem; }
+.verdict.yes { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--surface)); }
+.verdict.no { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
+.verdict strong { font-family: var(--font-mono); font-size: .88rem; }
+.verdict .sum { display: block; margin-top: 4px; color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <a class="back" id="back" href="lexer_visualizer.html">← Back to the scanner</a>
+    <div class="titles"><div class="eyebrow">Steps 1–3 · building the lexer</div><h1>Token rules and their NFAs</h1></div>
+    <nav class="sets" id="sets" aria-label="Rule set"></nav>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel rule-list" aria-label="Rules">
+    <div class="list-head"><h3 id="list-title">Rules</h3><span class="muted" id="list-sub"></span></div>
+    <ol id="rulelist" role="listbox" aria-label="Rules in this set"></ol>
+  </aside>
+
+  <section class="detail" aria-live="polite">
+    <div class="detail-head" id="detail-head">
+      <div><h2 id="r-name"></h2><div class="pills" id="r-pills"></div></div>
+      <details class="explain">
+        <summary>How to read this</summary>
+        <div>
+          <p><b>1 · Regex.</b> The token type written as a pattern. <code>[a-z]</code> is one character from a range, <code>*</code> means zero or more, <code>+</code> one or more, <code>?</code> optional, <code>|</code> either side.</p>
+          <p><b>2 · Postfix.</b> The shunting-yard algorithm rewrites the pattern so each operator comes after what it applies to; <code>·</code> means "followed by". <code>ab*</code> becomes <code>a b * ·</code>, which a program can build with a simple stack.</p>
+          <p><b>3 · NFA.</b> Thompson's construction turns the postfix into a machine. Start at the orange state. A solid arrow reads the character on it. A dashed <b>ε</b> arrow is a free move that reads nothing, which is how <code>*</code>, <code>+</code> and <code>|</code> are built. Being in the green state means the text read so far matches.</p>
+          <p>"Nondeterministic" means the machine can be in several states at once. Run a string below to watch that happen.</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="chain">
+      <div class="panel stage"><div class="hd"><span class="n">1</span><span class="lbl">Regex</span></div><code id="r-regex"></code></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="panel stage"><div class="hd"><span class="n">2</span><span class="lbl">Postfix</span></div><div class="post" id="r-postfix"></div></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="panel stage"><div class="hd"><span class="n">3</span><span class="lbl">NFA</span></div><span class="big" id="r-nfa-count"></span><span class="muted" id="r-nfa-break" style="font-size:.8rem"></span></div>
+    </div>
+
+    <div class="panel canvas">
+      <div class="canvas-bar">
+        <div class="legend">
+          <span><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="var(--fg)" stroke-width="1.5"/></svg>reads a character</span>
+          <span><svg width="26" height="10"><line x1="0" y1="5" x2="26" y2="5" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/></svg>ε free move</span>
+          <span><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--head)" stroke-width="2"/></svg>start</span>
+          <span><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="none" stroke="var(--ok)" stroke-width="2"/><circle cx="7" cy="7" r="3.5" fill="none" stroke="var(--ok)" stroke-width="1.5"/></svg>accept</span>
+          <span><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="color-mix(in srgb, var(--head) 38%, var(--surface))" stroke="var(--head)" stroke-width="2"/></svg>active while running</span>
+        </div>
+        <div class="zoom">
+          <button id="zout" type="button" aria-label="Zoom out">−</button>
+          <button id="zfit" type="button">Fit</button>
+          <button id="zin" type="button" aria-label="Zoom in">+</button>
+        </div>
+      </div>
+      <div class="canvas-scroll" id="canvas"><svg id="nfa" role="img"></svg><div class="nfa-big" id="nfa-big" hidden></div></div>
+    </div>
+
+    <div class="panel runner">
+      <h3>Run a string through this NFA</h3>
+      <p class="muted">Type some text and step through it. Highlighted states are every place the machine could be after reading the characters so far.</p>
+      <div class="run-row">
+        <input id="test" type="text" spellcheck="false" autocomplete="off" aria-label="Text to run through the NFA">
+        <button id="t-prev" type="button" aria-label="Previous character">◀</button>
+        <button id="t-next" type="button" aria-label="Next character">▶</button>
+        <button id="t-all" type="button">Read all</button>
+      </div>
+      <div class="chars" id="t-chars" aria-label="Characters"></div>
+      <div class="verdict" id="t-verdict"></div>
+    </div>
+  </section>
+</main>
+
+<script type="application/json" id="nfa-data">__NFA_DATA__</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById('nfa-data').textContent);
+  const SETS = DATA.sets;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const esc = (s) => s.replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\f/g, '\\f').replace(/\v/g, '\\v');
+  const show = (ch) => ch.charCodeAt(0) >= 128 ? '\\x' + ch.charCodeAt(0).toString(16) : esc(ch);
+  const NAME_KIND = { KEYWORD: 'kw', IDENT: 'id', IDENTIFIER: 'id', NUMBER: 'num', INT: 'num', FLOAT: 'num',
+    STRING: 'str', CHAR: 'str', COMMENT: 'com', OP: 'op', OPERATOR: 'op', PUNCT: 'punct', WS: 'ws', WHITESPACE: 'ws', DIRECTIVE: 'dir' };
+  const kindOf = (name, i) => { const n = name.toUpperCase(); return n.startsWith('KW') ? 'kw' : NAME_KIND[n] || 'x' + (i % 4); };
+
+  /* ---------- back link: return to the page that sent us, keeping its state ---------- */
+  const back = $('back');
+  back.href = location.protocol === 'file:' ? 'lexer_visualizer.html' : './';
+  back.addEventListener('click', (e) => {
+    try { if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1) { e.preventDefault(); history.back(); } } catch (_) {}
+  });
+
+  /* ---------- state ---------- */
+  let setKey = null, ruleIdx = 0, zoom = 1, baseW = 0, baseH = 0, nodes = {}, sim = null, pos = 0;
+  const MAX_DRAW = 130;
+
+  /* ---------- rule-set tabs ---------- */
+  const setButtons = {};
+  Object.entries(SETS).forEach(([key, s]) => {
+    const b = el('button'); b.type = 'button';
+    b.append(s.label, el('small', null, s.usedBy));
+    b.addEventListener('click', () => chooseSet(key, 0));
+    setButtons[key] = b; $('sets').append(b);
+  });
+
+  function chooseSet(key, idx) {
+    setKey = SETS[key] ? key : Object.keys(SETS)[0];
+    Object.entries(setButtons).forEach(([k, b]) => b.setAttribute('aria-pressed', String(k === setKey)));
+    const s = SETS[setKey];
+    $('list-title').textContent = s.label;
+    $('list-sub').textContent = `${s.rules.length} ${s.rules.length === 1 ? 'rule' : 'rules'}`;
+    const list = $('rulelist'); list.textContent = '';
+    s.rules.forEach((r, i) => {
+      const li = el('li', 'kind-' + kindOf(r.name, i)); li.tabIndex = 0; li.setAttribute('role', 'option');
+      li.append(el('span', 'dot'), el('span', 'nm', r.name), el('span', 'st', `${r.nfa.states.length} st`), el('span', 'pt', esc(r.pattern)));
+      li.addEventListener('click', () => chooseRule(i));
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseRule(i); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); chooseRule(Math.min(i + 1, s.rules.length - 1), true); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); chooseRule(Math.max(i - 1, 0), true); }
+      });
+      list.append(li);
+    });
+    chooseRule(Math.max(0, Math.min(idx, s.rules.length - 1)));
+  }
+
+  /* ---------- one rule ---------- */
+  function chooseRule(i, focus) {
+    const s = SETS[setKey], r = s.rules[i];
+    ruleIdx = i;
+    [...$('rulelist').children].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    if (focus) $('rulelist').children[i].focus();
+    else $('rulelist').children[i].scrollIntoView({ block: 'nearest' });
+    const hashName = /^[\w.~-]+$/.test(r.name) ? r.name : String(i);   // links may only carry plain characters
+    try { history.replaceState(null, '', '#' + setKey + '-' + hashName); } catch (_) {}
+
+    const head = $('detail-head'); head.className = 'detail-head kind-' + kindOf(r.name, i);
+    $('r-name').textContent = r.name;
+    const pills = $('r-pills'); pills.textContent = '';
+    const pill = (label, value) => { const p = el('span', 'pill'); if (value != null) p.append(label + ' ', el('b', null, String(value))); else p.append(label); pills.append(p); };
+    if (r.priority != null) pill('priority', r.priority);
+    if (r.skip != null) pill(r.skip ? 'skipped (not emitted)' : 'emitted as a token');
+    pill('states', r.nfa.states.length);
+    if (s.note) pill(s.note);
+
+    $('r-regex').textContent = esc(r.pattern);
+    const pf = $('r-postfix'); pf.textContent = '';
+    r.postfix.forEach(t => pf.append(el('span', t.k, t.k === 'lit' ? show(t.v) : t.v)));
+    const counts = {}; r.nfa.states.forEach(x => counts[x.type] = (counts[x.type] || 0) + 1);
+    $('r-nfa-count').textContent = `${r.nfa.states.length} states`;
+    $('r-nfa-break').textContent = `${(counts.char || 0) + (counts.class || 0)} read a character · ${counts.split || 0} split (ε) · ${counts.match || 0} accept`;
+
+    draw(r.nfa);
+    $('test').value = r.example || '';
+    run();
+  }
+
+  /* ---------- NFA drawing ---------- */
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = (tag, attrs, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
+
+  function draw(nfa) {
+    const svg = $('nfa'), big = $('nfa-big');
+    svg.textContent = ''; nodes = {};
+    if (nfa.states.length > MAX_DRAW) {
+      svg.hidden = true; big.hidden = false; big.textContent = '';
+      big.append(el('b', null, `${nfa.states.length} states`), ` is too many to draw clearly; it is one branch per alternative (for example one per keyword). You can still run strings through it below and watch how many states stay active.`);
+      $('zin').disabled = $('zout').disabled = $('zfit').disabled = true;
+      return;
+    }
+    svg.hidden = false; big.hidden = true;
+    $('zin').disabled = $('zout').disabled = $('zfit').disabled = false;
+
+    const edges = [];
+    nfa.states.forEach(s => {
+      if (s.type === 'char' || s.type === 'class') edges.push({ a: s.id, b: s.out, label: s.label, eps: false });
+      if (s.type === 'split') { if (s.out >= 0) edges.push({ a: s.id, b: s.out, label: 'ε', eps: true }); if (s.out1 >= 0) edges.push({ a: s.id, b: s.out1, label: 'ε', eps: true }); }
+    });
+    // Layered layout. Loops (edges back to a state still being explored) are set aside and
+    // drawn as arcs; on what is left, a state's column is its longest distance from the start,
+    // so everything flows left to right. Each split sends its second branch to a new row, which
+    // gives every alternative of a | its own line.
+    const byId = {}; nfa.states.forEach(s => byId[s.id] = s);
+    const outs = (id) => { const s = byId[id]; return s.type === 'split' ? [s.out, s.out1] : s.type === 'match' ? [] : [s.out]; };
+    const isBack = new Set(), onStack = new Set(), seen = new Set();
+    (function dfs(id) {
+      seen.add(id); onStack.add(id);
+      outs(id).forEach(t => { if (t < 0) return; if (onStack.has(t)) isBack.add(id + '>' + t); else if (!seen.has(t)) dfs(t); });
+      onStack.delete(id);
+    })(nfa.start);
+    const fwd = (id) => outs(id).filter(t => t >= 0 && !isBack.has(id + '>' + t));
+    const indeg = {}; nfa.states.forEach(s => indeg[s.id] = 0);
+    nfa.states.forEach(s => fwd(s.id).forEach(t => indeg[t]++));
+    // A split leading straight into another split (how a|b|c|d nests) stays in the same
+    // column, one row down, so all the alternatives start side by side like rungs of a ladder.
+    const stacked = (a, t) => byId[a].type === 'split' && byId[t].type === 'split';
+    const depth = {}; nfa.states.forEach(s => depth[s.id] = 0);
+    const queue = nfa.states.filter(s => indeg[s.id] === 0).map(s => s.id);
+    while (queue.length) { const id = queue.shift(); fwd(id).forEach(t => { depth[t] = Math.max(depth[t], depth[id] + (stacked(id, t) ? 0 : 1)); if (--indeg[t] === 0) queue.push(t); }); }
+    const row = {}; let rows = 0;
+    (function place(id, r) {
+      row[id] = r;
+      // the child that moves right keeps this row; stacked splits and other branches go below
+      const kids = fwd(id).filter(t => row[t] == null).sort((x, y) => stacked(id, x) - stacked(id, y));
+      kids.forEach((t, k) => { if (row[t] == null) place(t, k === 0 && !stacked(id, t) ? r : ++rows); });
+    })(nfa.start, 0);
+    nfa.states.forEach(s => { if (row[s.id] == null) row[s.id] = ++rows; });
+    // A state that many branches flow into (like the accept state of a long |) sits at their average height.
+    const preds = {}; nfa.states.forEach(s => fwd(s.id).forEach(t => (preds[t] = preds[t] || []).push(s.id)));
+    Object.entries(preds).forEach(([t, ps]) => { if (ps.length >= 3) row[t] = Math.round(ps.reduce((a, p) => a + row[p], 0) / ps.length); });
+    const maxD = Math.max(...Object.values(depth));
+    const labelW = Math.max(60, ...edges.map(e => e.label.length * 8 + 34));
+    const GX = Math.min(250, labelW + 50), GY = 82, R = 21, X0 = 90, Y0 = 110;
+    const P = {}; nfa.states.forEach(s => P[s.id] = { x: X0 + depth[s.id] * GX, y: Y0 + row[s.id] * GY });
+    svg.setAttribute('viewBox', `0 0 ${X0 + maxD * GX + 60} ${Y0 + rows * GY + 110}`);
+    svg.setAttribute('aria-label', `NFA with ${nfa.states.length} states`);
+
+    const defs = sv('defs');
+    ['solid', 'eps', 'start'].forEach(t => { const m = sv('marker', { id: 'ar-' + t, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      m.append(sv('path', { d: 'M0,0 L10,5 L0,10 z', class: 'arrowhead' + (t === 'solid' ? '' : ' ' + t) })); defs.append(m); });
+    svg.append(defs);
+    const gE = sv('g'), gL = sv('g'), gN = sv('g');
+    let above = 0, below = 0;
+    edges.forEach(e => {
+      const A = P[e.a], B = P[e.b]; if (!A || !B) return;
+      const loop = isBack.has(e.a + '>' + e.b);
+      const sameRowSkip = !loop && row[e.a] === row[e.b] && depth[e.b] - depth[e.a] > 1;
+      let d, lx, ly;
+      if (!loop && !sameRowSkip) {
+        if (Math.abs(B.y - A.y) < 1 || Math.abs(B.x - A.x) < 1) {
+          // along a row, or straight down a column of stacked splits
+          const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+          const x1 = A.x + dx / L * R, y1 = A.y + dy / L * R, x2 = B.x - dx / L * (R + 2), y2 = B.y - dy / L * (R + 2);
+          d = `M${x1},${y1} L${x2},${y2}`;
+          if (Math.abs(dx) < 1) { lx = A.x - 13; ly = (A.y + B.y) / 2 + 4; } else { lx = (x1 + x2) / 2; ly = y1 - 9; }
+        } else {
+          // between rows: an S-curve that leaves and arrives horizontally, labelled where it starts
+          const x1 = A.x + R, y1 = A.y, x2 = B.x - R - 2, y2 = B.y, mx = (x1 + x2) / 2;
+          d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+          lx = x1 + 10 + e.label.length * 4; ly = y1 - 8;
+        }
+      } else {
+        const span = Math.abs(depth[e.b] - depth[e.a]) || 1;
+        const lift = (loop ? -1 : 1) * (40 + 14 * span + 10 * (loop ? above++ : below++));
+        const cx = (A.x + B.x) / 2, cy = (loop ? Math.min(A.y, B.y) : Math.max(A.y, B.y)) + lift;
+        const sa = Math.atan2(cy - A.y, cx - A.x), eb = Math.atan2(cy - B.y, cx - B.x);
+        const x1 = A.x + Math.cos(sa) * R, y1 = A.y + Math.sin(sa) * R, x2 = B.x + Math.cos(eb) * (R + 2), y2 = B.y + Math.sin(eb) * (R + 2);
+        d = `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`;
+        lx = 0.25 * x1 + 0.5 * cx + 0.25 * x2; ly = 0.25 * y1 + 0.5 * cy + 0.25 * y2 + (loop ? -7 : 15);
+      }
+      gE.append(sv('path', { d, class: 'edge' + (e.eps ? ' eps' : ''), 'marker-end': `url(#ar-${e.eps ? 'eps' : 'solid'})` }));
+      gL.append(sv('text', { x: lx, y: ly, class: 'elabel' + (e.eps ? ' eps' : '') }, e.label));
+    });
+    nfa.states.forEach(s => {
+      const p = P[s.id];
+      const c = sv('circle', { cx: p.x, cy: p.y, r: R, class: 'node ' + s.type + (s.id === nfa.start ? ' start' : '') });
+      const t = sv('title', {}, `s${s.id} · ${s.type === 'split' ? 'split (two ε moves)' : s.type === 'match' ? 'accept' : 'reads ' + s.label}`);
+      c.append(t); gN.append(c);
+      const extra = [c];
+      if (s.type === 'match') { const inner = sv('circle', { cx: p.x, cy: p.y, r: R - 5, class: 'node match' }); gN.append(inner); extra.push(inner); }
+      gN.append(sv('text', { x: p.x, y: p.y, class: 'nid' }, 's' + s.id));
+      nodes[s.id] = extra;
+    });
+    const S0 = P[nfa.start];
+    gE.append(sv('path', { d: `M${S0.x - 70},${S0.y} L${S0.x - R - 2},${S0.y}`, class: 'edge start', 'marker-end': 'url(#ar-start)' }));
+    gL.append(sv('text', { x: S0.x - 72, y: S0.y - 9, class: 'startlbl' }, 'start'));
+    svg.append(gE, gN, gL);
+    const bb = svg.getBBox(); const pad = 16;
+    baseW = bb.width + 2 * pad; baseH = bb.height + 2 * pad;
+    svg.setAttribute('viewBox', `${bb.x - pad} ${bb.y - pad} ${baseW} ${baseH}`);
+    fit();
+  }
+
+  function applyZoom() { const svg = $('nfa'); svg.setAttribute('width', Math.round(baseW * zoom)); svg.setAttribute('height', Math.round(baseH * zoom)); }
+  function fit() {
+    const box = $('canvas'); const avail = box.clientWidth - 48;
+    zoom = Math.max(0.35, Math.min(1.5, avail / baseW)); applyZoom();
+  }
+  $('zin').addEventListener('click', () => { zoom = Math.min(3, zoom * 1.25); applyZoom(); });
+  $('zout').addEventListener('click', () => { zoom = Math.max(0.25, zoom / 1.25); applyZoom(); });
+  $('zfit').addEventListener('click', fit);
+  let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (!$('nfa').hidden) fit(); }, 150); });
+
+  /* ---------- run a string: the same state-set simulation the lexer's longest_match() does ---------- */
+  function simulate(nfa, bytes) {
+    const byId = {}; nfa.states.forEach(s => byId[s.id] = s);
+    const matchIds = new Set(nfa.states.filter(s => s.type === 'match').map(s => s.id));
+    const close = (ids) => {   // follow ε moves (split states) to the states that read characters
+      const seen = new Set(), active = new Set(), passed = new Set(), stack = [...ids];
+      while (stack.length) {
+        const id = stack.pop();
+        if (id < 0 || seen.has(id)) continue;
+        seen.add(id);
+        const s = byId[id];
+        if (s.type === 'split') { passed.add(id); stack.push(s.out, s.out1); } else active.add(id);
+      }
+      return { active, passed, accepting: [...active].some(id => matchIds.has(id)) };
+    };
+    const eats = (s, b) => s.type === 'char' ? s.code === b : s.type === 'class' ? s.ranges.some(([lo, hi]) => b >= lo && b <= hi) : false;
+    const steps = [close([nfa.start])];
+    let best = steps[0].accepting ? 0 : -1;
+    for (let i = 0; i < bytes.length; i++) {
+      const cur = steps[steps.length - 1].active;
+      const next = [...cur].filter(id => eats(byId[id], bytes[i])).map(id => byId[id].out);
+      const st = close(next);
+      steps.push(st);
+      if (st.accepting) best = i + 1;
+      if (st.active.size === 0) break;          // stuck: nothing more can match
+    }
+    return { steps, best };
+  }
+
+  const enc = new TextEncoder();
+  let bytes = [], chars = [];
+  function run() {
+    const r = SETS[setKey].rules[ruleIdx];
+    const text = $('test').value;
+    bytes = [...enc.encode(text)];
+    chars = bytes.map(b => String.fromCharCode(b));
+    sim = simulate(r.nfa, bytes);
+    pos = sim.steps.length - 1;          // show the end result first
+    paint();
+  }
+  function paint() {
+    const st = sim.steps[pos];
+    Object.entries(nodes).forEach(([id, els]) => els.forEach(c => {
+      c.classList.toggle('active', st.active.has(+id));
+      c.classList.toggle('passed', st.passed.has(+id));
+    }));
+    const box = $('t-chars'); box.textContent = '';
+    const stuckAt = sim.steps.length - 1 < bytes.length ? sim.steps.length - 1 : -1;
+    chars.forEach((ch, i) => {
+      const c = el('span', 'ch', ch === ' ' ? '·' : ch === '\t' ? '→' : ch === '\n' ? '↵' : bytes[i] >= 128 ? bytes[i].toString(16) : ch);
+      if (/\s/.test(ch)) c.classList.add('ws');
+      if (i < pos) c.classList.add('read');
+      if (i < sim.best) c.classList.add('inmatch');
+      if (i === pos && pos < bytes.length && stuckAt < 0) c.classList.add('next');
+      if (stuckAt >= 0 && i >= stuckAt && i >= pos) c.classList.add('dead');
+      c.title = `character ${i + 1}: '${show(ch)}'`;
+      c.addEventListener('click', () => { pos = Math.min(i + 1, sim.steps.length - 1); paint(); });
+      box.append(c);
+    });
+    $('t-prev').disabled = pos === 0;
+    $('t-next').disabled = $('t-all').disabled = pos >= sim.steps.length - 1;
+
+    const v = $('t-verdict'); v.textContent = '';
+    const read = chars.slice(0, pos).join('');
+    const quoted = (s) => el('strong', null, `'${esc(s)}'`);
+    if (!bytes.length) {
+      v.className = 'verdict'; v.append('Type something above to run it through the machine.');
+    } else if (st.active.size === 0) {
+      v.className = 'verdict no';
+      v.append('After ', quoted(read), ' no state can continue: the machine is stuck, so nothing longer can match.');
+    } else if (st.accepting) {
+      v.className = 'verdict yes';
+      v.append('After ', quoted(read), ` the machine can be in the green accept state, so `, quoted(read), ' matches.');
+    } else {
+      v.className = 'verdict';
+      if (pos === 0) v.append('Before reading anything, ');
+      else v.append('After ', quoted(read), ', ');
+      v.append(`${st.active.size} state${st.active.size === 1 ? ' is' : 's are'} active, but none of them accepts yet.`);
+    }
+    if (bytes.length) {
+      const sum = el('span', 'sum');
+      if (sim.best < 0) sum.append('No start of this text matches, so the scanner would not pick this rule here.');
+      else sum.append('Longest match: ', quoted(chars.slice(0, sim.best).join('')), ` (${sim.best} of ${bytes.length} characters). That length is what this rule reports to the scanner.`);
+      v.append(sum);
+    }
+  }
+  $('test').addEventListener('input', run);
+  $('test').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); pos = sim.steps.length - 1; paint(); } });
+  $('t-prev').addEventListener('click', () => { pos = Math.max(0, pos - 1); paint(); });
+  $('t-next').addEventListener('click', () => { pos = Math.min(sim.steps.length - 1, pos + 1); paint(); });
+  $('t-all').addEventListener('click', () => { pos = sim.steps.length - 1; paint(); });
+
+  /* ---------- open what the link asked for: #<set>-<RULE> ---------- */
+  function fromHash() {
+    const h = decodeURIComponent(location.hash.slice(1));
+    const key = Object.keys(SETS).find(k => h === k || h.startsWith(k + '-'));
+    if (!key) return chooseSet(Object.keys(SETS)[0], Math.max(0, SETS[Object.keys(SETS)[0]].rules.findIndex(r => /^IDENT/.test(r.name))));
+    const name = h.slice(key.length + 1);
+    let idx = SETS[key].rules.findIndex(r => r.name === name);
+    if (idx < 0 && /^\d+$/.test(name)) idx = +name;
+    chooseSet(key, idx >= 0 ? idx : Math.max(0, SETS[key].rules.findIndex(r => /^IDENT/.test(r.name))));
+  }
+  fromHash();
+  window.addEventListener('hashchange', fromHash);
+})();
+</script>
+</body>
+</html>
