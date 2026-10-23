@@ -1,0 +1,56 @@
+Regex Lexer Generator
+=====================
+
+Part 1 -- character classes compiled directly
+
+Pattern [a-z]                    NFA states: 2
+  a        MATCH
+  7        reject
+  123      reject
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [0-9]+                   NFA states: 3
+  a        reject
+  7        MATCH
+  123      MATCH
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [a-zA-Z_][a-zA-Z0-9_]*   NFA states: 4
+  a        MATCH
+  7        reject
+  123      reject
+  hello    MATCH
+  abc123   MATCH
+  A1       MATCH
+  _tmp9    MATCH
+
+Part 2 -- scanning source.txt with 9 rules (built-in general rules)
+
+input:
+if x1 = 42 + count
+while total * 2 @ ste 1-afa
+
+tokens:
+     1:1    KEYWORD    'if'
+     1:4    IDENT      'x1'
+     1:7    OP         '='
+     1:9    NUMBER     '42'
+     1:12   OP         '+'
+     1:14   IDENT      'count'
+     2:1    KEYWORD    'while'
+     2:7    IDENT      'total'
+     2:13   OP         '*'
+     2:15   NUMBER     '2'
+     2:17   OP         '@'
+     2:19   IDENT      'ste'
+     2:23   NUMBER     '1'
+     2:24   OP         '-'
+     2:25   IDENT      'afa'
+
+Interactive view of this run:  python3 visualize/build.py source.txt --open

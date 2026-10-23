@@ -1,0 +1,19 @@
+# Token rules for Python.   Usage: ./lexer program.py --rules rules/python.rules
+#
+# One rule per line:  NAME  PRIORITY  token|skip  REGEX
+#   PRIORITY  breaks ties when two rules match the same length (lower wins)
+#   skip      the match is consumed but not emitted (whitespace, comments)
+# In REGEX, \n \t \r \f \v are those characters; any other \x is a literal x.
+#
+# Differences from C: '#' starts a comment, '//' is floor division, strings
+# can be triple-quoted and carry r/b/f/u prefixes. Indentation is treated as
+# plain whitespace (no INDENT/DEDENT tokens).
+
+KEYWORD    1  token  False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|match|case|self
+COMMENT    2  skip   #[^\n]*
+STRING     2  token  [rRbBuUfF]*("""([^"\\]|\\[^\n]|\\\n|"[^"]|""[^"])*"""|'''([^'\\]|\\[^\n]|\\\n|'[^']|''[^'])*'''|"([^"\\\n]|\\[^\n])*"|'([^'\\\n]|\\[^\n])*')
+NUMBER     2  token  0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*(\.[0-9_]*)?([eE][+\-]?[0-9]+)?[jJ]?|\.[0-9]+([eE][+\-]?[0-9]+)?[jJ]?
+IDENT      2  token  [a-zA-Z_][a-zA-Z0-9_]*
+OP         2  token  \*\*=|//=|>>=|<<=|->|:=|\*\*|//|==|!=|<=|>=|<<|>>|\+=|-=|\*=|/=|%=|&=|\|=|\^=|@=|[-+*/%=<>!&|^~@]
+PUNCT      2  token  [(){}\[\];,.:]
+WS         3  skip   [ \t\r\n\f\v\\]+
