@@ -28,7 +28,8 @@ MAX_CODE_BYTES = 1_000_000
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RCC = ROOT / "build" / "rcc"
 WEB = ROOT / "web" / "index.html"
-STATIC = {"/workbench.css": "text/css; charset=utf-8", "/app.js": "text/javascript; charset=utf-8"}
+STATIC = {"/workbench.css": "text/css; charset=utf-8", "/app.js": "text/javascript; charset=utf-8",
+          "/browser-compiler.js": "text/javascript; charset=utf-8"}
 COMPILE_TIMEOUT = 60
 WORKBENCH_LANGS = {"C": ".c", "Java": ".java", "Python": ".py"}
 

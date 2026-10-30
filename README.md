@@ -10,6 +10,7 @@ A web workbench shows every stage.
 
 ```bash
 ./run.sh                     # builds if needed, starts the workbench and opens it in the browser
+                             # (online demo with the examples: https://qopikop.github.io/RegLex/)
 make                         # or build only: build/rcc and ./lexer
 python3 visualize/serve.py   # or start the server yourself (first free port from 8000)
 ```
@@ -51,6 +52,8 @@ control-flow simplification. Each pass checks language rules before it acts
 | `examples/` | basic → advanced programs per language, error and partial-support demos (`manifest.json`) |
 | `web/` | the workbench: `index.html`, `workbench.css`, `app.js` |
 | `run.sh` | one-command launcher |
-| `index.html`, `visualize/lexer_visualizer.html`, `visualize/nfa.html` | the earlier static lexer visualizer, kept for GitHub Pages (the workbench needs the local server) |
+| `index.html` | GitHub Pages entry: forwards to `web/`, the online demo |
+| `web/build_pages.py` | saves the real compiler output for every example (`web/results/`, `web/examples.json`) so the online demo works without a server; rerun after changing the compiler or examples |
+| `web/build_wasm.sh` | optional: builds the compiler as WebAssembly (`web/wasm/`) so the online demo can compile any code; needs Emscripten |
 | `visualize/` | local server (`serve.py`) and language detection |
 | `tests/` | unit, differential, random, stress and golden tests |

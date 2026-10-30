@@ -930,6 +930,11 @@ void ir_run(IRProg *p, const RunLimits *lim, RunResult *r) {
     prepare(&vm);
     if (!p->entry.n) { r->status = RUN_UNSUPPORTED; snprintf(r->msg, sizeof(r->msg), "no entry point (no main function / module code)"); }
     else {
+#ifdef __EMSCRIPTEN__
+        /* browser build: no threads; the wasm stack is sized at link time (web/build_wasm.sh) */
+        ThreadArg ta = { &vm };
+        run_thread(&ta);
+#else
         /* deep recursion needs a big stack: run on a thread with 512 MB reserved */
         pthread_t th;
         pthread_attr_t at;
@@ -939,6 +944,7 @@ void ir_run(IRProg *p, const RunLimits *lim, RunResult *r) {
         if (pthread_create(&th, &at, run_thread, &ta) == 0) pthread_join(th, NULL);
         else run_thread(&ta);
         pthread_attr_destroy(&at);
+#endif
     }
     for (int i = 0; i < vm.nf; i++) { free(vm.fx[i].code); free(vm.fx[i].param_slots); }
     free(vm.fx);

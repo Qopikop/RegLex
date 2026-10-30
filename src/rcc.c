@@ -421,6 +421,9 @@ static double time_scan(RuleSet *rs, const char *src, ScanMode mode, int *ntok) 
 }
 
 static long peak_rss_kb(void) {
+#ifdef __EMSCRIPTEN__
+    return (long)(__builtin_wasm_memory_size(0) * 64);   /* wasm pages are 64 KB */
+#endif
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
 #ifdef __APPLE__

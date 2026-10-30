@@ -1,5 +1,6 @@
 /* RegLex Compiler Workbench -- page logic.
-   Everything shown comes from build/rcc's JSON (POST /api/compile via visualize/serve.py).
+   Everything shown comes from build/rcc's JSON: POST /api/compile via visualize/serve.py, or, with no
+   server (GitHub Pages), the same compiler built to WebAssembly and run in the browser (browser-compiler.js).
    Sections: helpers · status & staleness · editor · menus & examples · pipeline · views · compile · export · boot */
 "use strict";
 const $ = (s, r = document) => r.querySelector(s);
@@ -45,6 +46,7 @@ function staleReason() {
 /* One summary of the last compile, derived from the compiler's own JSON. */
 function compileSummary() {
   if (state.compiling) return { kind: "run", label: "Compiling…" };
+  if (state.failed?.startsWith("This online demo")) return { kind: "neutral", label: "Online demo: examples only", detail: "run ./run.sh to compile your own code" };
   if (state.failed) return { kind: "error", label: "Compile failed", detail: state.failed };
   const d = state.data;
   if (!d) return { kind: "", label: "Ready", detail: "press Compile" };
@@ -349,7 +351,7 @@ const LEVELS = ["Basic", "Intermediate", "Advanced", "Partial", "Errors"];
 const LEVEL_NAME = { Partial: "Partial support", Errors: "Errors and recovery" };
 function renderExamplePicker() {
   const ex = state.examples, list = $("#exampleList");
-  if (!ex) { $("#exampleLangs").innerHTML = ""; list.innerHTML = `<p class="note" style="padding:8px 9px">Examples load from the local server. Start it with <span class="mono">./run.sh</span>.</p>`; return; }
+  if (!ex) { $("#exampleLangs").innerHTML = ""; list.innerHTML = `<p class="note" style="padding:8px 9px">The examples could not be loaded. Locally, start the server with <span class="mono">./run.sh</span>.</p>`; return; }
   const langs = ["C", "Java", "Python", ...(ex.lexical?.length ? ["Custom rules"] : [])];
   if (!langs.includes(state.exampleLang)) state.exampleLang = langs.includes(langOf()) ? langOf() : "C";
   $("#exampleLangs").innerHTML = langs.map(l => `<button data-exlang="${esc(l)}" class="${l === state.exampleLang ? "sel" : ""}" aria-pressed="${l === state.exampleLang}">${esc(l === "Custom rules" ? "Rules" : l)}</button>`).join("");
@@ -986,7 +988,10 @@ function clearResults() {
 }
 
 /* ------------------------------------------------------------------ compile */
+/* With the local server the API is HTTP; without it (GitHub Pages) the same calls run in the browser. */
 async function api(path, body) {
+  path = path.replace(/^\//, "");
+  if (state.inBrowser) return BrowserCompiler.call(path, body);
   const res = await fetch(path, { method: body ? "POST" : "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({ error: "bad response from the server" }));
   if (!res.ok) throw new Error(data.error || res.statusText);
@@ -1097,6 +1102,8 @@ async function boot() {
   renderAll();
   $("#lang").value = store.get("lang", "auto");
   try {
+    const health = await fetch("api/health").then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!health?.languages && typeof BrowserCompiler === "object" && await BrowserCompiler.available().catch(() => false)) state.inBrowser = true;
     state.examples = await api("/api/examples");
     if (state.examples.tests) {
       const t = state.examples.tests, note = $("#tests");
@@ -1104,6 +1111,12 @@ async function boot() {
       note.classList.toggle("bad", t.passed !== t.total);
       note.textContent = `${t.passed}/${t.total} tests passed`;
       note.title = `Last test run ${t.date}: ` + Object.entries(t.sections).map(([k, [a, b]]) => `${k} ${a}/${b}`).join(", ");
+    }
+    if (state.inBrowser && BrowserCompiler.mode === "examples") {
+      const note = $("#tests");
+      note.hidden = false;
+      note.textContent = "Online demo · examples only";
+      note.title = "Pick a program from Open → Load example (or the language box) and press Compile. To compile your own code, run the workbench on your computer with ./run.sh.";
     }
   } catch (e) { toast("Start the server (./run.sh) to compile", "warn"); }
   const saved = store.get("code", "");
