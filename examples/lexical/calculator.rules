@@ -1,0 +1,12 @@
+# A small custom rule set: a calculator language with variables.
+# Lexical analysis only -- the parser grammar belongs to C, Java and Python,
+# so these tokens are recognised and visualised but not parsed.
+LET      1  token  let|print
+FLOAT    2  token  [0-9]+\.[0-9]+
+INT      2  token  [0-9]+
+NAME     2  token  [a-z][a-z0-9]*
+ASSIGN   2  token  :=
+OP       2  token  [-+*/^]
+PAREN    2  token  [()]
+COMMENT  2  skip   --[^\n]*
+WS       3  skip   [ \t\r\n]+

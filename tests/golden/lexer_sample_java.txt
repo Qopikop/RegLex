@@ -1,0 +1,117 @@
+Regex Lexer Generator
+=====================
+
+Part 1 -- character classes compiled directly
+
+Pattern [a-z]                    NFA states: 2
+  a        MATCH
+  7        reject
+  123      reject
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [0-9]+                   NFA states: 3
+  a        reject
+  7        MATCH
+  123      MATCH
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [a-zA-Z_][a-zA-Z0-9_]*   NFA states: 4
+  a        MATCH
+  7        reject
+  123      reject
+  hello    MATCH
+  abc123   MATCH
+  A1       MATCH
+  _tmp9    MATCH
+
+Part 2 -- scanning examples/Sample.java with 9 rules (built-in general rules)
+
+input:
+package demo;
+public class Sample { @Override public String toString() { return "x=" + this.x; }
+  public static void main(String[] args) { int[] a = new int[5]; a[0] += 1; if (a.length >= 5 && !false) System.out.println('c'); } }
+
+tokens:
+     1:1    KEYWORD    'package'
+     1:9    IDENT      'demo'
+     1:13   PUNCT      ';'
+     2:1    KEYWORD    'public'
+     2:8    KEYWORD    'class'
+     2:14   IDENT      'Sample'
+     2:21   PUNCT      '{'
+     2:23   OP         '@'
+     2:24   IDENT      'Override'
+     2:33   KEYWORD    'public'
+     2:40   IDENT      'String'
+     2:47   IDENT      'toString'
+     2:55   PUNCT      '('
+     2:56   PUNCT      ')'
+     2:58   PUNCT      '{'
+     2:60   KEYWORD    'return'
+     2:67   STRING     '"x="'
+     2:72   OP         '+'
+     2:74   KEYWORD    'this'
+     2:78   PUNCT      '.'
+     2:79   IDENT      'x'
+     2:80   PUNCT      ';'
+     2:82   PUNCT      '}'
+     3:3    KEYWORD    'public'
+     3:10   KEYWORD    'static'
+     3:17   KEYWORD    'void'
+     3:22   IDENT      'main'
+     3:26   PUNCT      '('
+     3:27   IDENT      'String'
+     3:33   PUNCT      '['
+     3:34   PUNCT      ']'
+     3:36   IDENT      'args'
+     3:40   PUNCT      ')'
+     3:42   PUNCT      '{'
+     3:44   KEYWORD    'int'
+     3:47   PUNCT      '['
+     3:48   PUNCT      ']'
+     3:50   IDENT      'a'
+     3:52   OP         '='
+     3:54   KEYWORD    'new'
+     3:58   KEYWORD    'int'
+     3:61   PUNCT      '['
+     3:62   NUMBER     '5'
+     3:63   PUNCT      ']'
+     3:64   PUNCT      ';'
+     3:66   IDENT      'a'
+     3:67   PUNCT      '['
+     3:68   NUMBER     '0'
+     3:69   PUNCT      ']'
+     3:71   OP         '+='
+     3:74   NUMBER     '1'
+     3:75   PUNCT      ';'
+     3:77   KEYWORD    'if'
+     3:80   PUNCT      '('
+     3:81   IDENT      'a'
+     3:82   PUNCT      '.'
+     3:83   IDENT      'length'
+     3:90   OP         '>='
+     3:93   NUMBER     '5'
+     3:95   OP         '&&'
+     3:98   OP         '!'
+     3:99   KEYWORD    'false'
+     3:104  PUNCT      ')'
+     3:106  IDENT      'System'
+     3:112  PUNCT      '.'
+     3:113  IDENT      'out'
+     3:116  PUNCT      '.'
+     3:117  IDENT      'println'
+     3:124  PUNCT      '('
+     3:125  STRING     ''c''
+     3:128  PUNCT      ')'
+     3:129  PUNCT      ';'
+     3:131  PUNCT      '}'
+     3:133  PUNCT      '}'
+
+Interactive view:  python3 visualize/serve.py  (the compiler workbench)
+Full compiler (parser, TAC, optimizer):  build/rcc <file.c|.java|.py>

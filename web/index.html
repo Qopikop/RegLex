@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RegLex Compiler Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">Rx</div>
+    <div><h1>RegLex Compiler Workbench</h1><p>Educational compiler workbench for supported subsets of C, Java, and Python</p></div>
+  </div>
+  <div class="spacer"></div>
+  <span class="status" id="status" role="status" aria-live="polite"></span>
+  <span class="tests-note hide-md" id="tests" hidden></span>
+  <div class="menu" id="exportMenu">
+    <button class="btn" id="exportBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="exportList" title="Export results">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg><span class="hide-sm">Export</span>
+    </button>
+    <div class="menu-list" role="menu" id="exportList" aria-label="Export">
+      <div class="menu-note" id="exportNote" hidden></div>
+      <button class="menu-item" role="menuitem" data-export="report">Compilation report<span class="ext">.md</span></button>
+      <button class="menu-item" role="menuitem" data-export="json">Everything<span class="ext">.json</span></button>
+      <div class="menu-sep" role="separator"></div>
+      <button class="menu-item" role="menuitem" data-export="tokens">Token stream<span class="ext">.csv</span></button>
+      <button class="menu-item" role="menuitem" data-export="automata">Transition tables<span class="ext">.json</span></button>
+      <button class="menu-item" role="menuitem" data-export="ast">Syntax tree<span class="ext">.json</span></button>
+      <button class="menu-item" role="menuitem" data-export="tac">Original and optimized TAC<span class="ext">.txt</span></button>
+      <button class="menu-item" role="menuitem" data-export="diags">Diagnostics<span class="ext">.txt</span></button>
+      <button class="menu-item" role="menuitem" data-export="svg">Current diagram<span class="ext">.svg</span></button>
+    </div>
+  </div>
+  <button class="btn ghost" id="themeBtn" title="Switch light / dark theme" aria-label="Switch light or dark theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+</header>
+
+<nav class="pipeline" id="pipeline" aria-label="Compilation stages"></nav>
+
+<main class="workspace" id="workspace">
+  <section class="pane" aria-label="Source code">
+    <div class="toolbar">
+      <select class="sel" id="lang" aria-label="Language">
+        <option value="auto">Auto-detect</option><option>C</option><option>Java</option><option>Python</option>
+      </select>
+      <span class="spacer"></span>
+      <div class="menu" id="openMenu">
+        <button class="btn" id="openBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="openList" title="Open a source file or load an example">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg>Open
+        </button>
+        <div class="menu-list" role="menu" id="openList" aria-label="Open">
+          <button class="menu-item" role="menuitem" id="openFile">Open source file…<span class="ext">.c .java .py</span></button>
+          <button class="menu-item" role="menuitem" id="openExample">Load example…</button>
+        </div>
+        <div class="menu-list examples" id="examplePicker" role="dialog" aria-label="Load example">
+          <div class="examples-head">
+            <b>Examples</b><span class="spacer"></span>
+            <div class="seg sm" id="exampleLangs" role="group" aria-label="Example language"></div>
+          </div>
+          <div class="examples-body" id="exampleList"></div>
+        </div>
+      </div>
+      <input type="file" id="file" accept=".c,.h,.java,.py,.txt" hidden>
+      <button class="btn" id="rulesBtn" title="View or edit the lexical rules" aria-expanded="false" aria-controls="rulesDrawer">Rules</button>
+      <button class="btn-primary" id="compileBtn" title="Compile (Ctrl/⌘ + Enter)">
+        <svg class="play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg><span class="spin" aria-hidden="true"></span><span id="compileLabel">Compile</span> <kbd class="hide-sm">⌘↵</kbd>
+      </button>
+    </div>
+    <div class="rules-drawer" id="rulesDrawer">
+      <label class="switch"><input type="checkbox" id="customRules"> Use these rules instead of the language's built-in rules</label>
+      <p class="note">Each rule is <span class="mono">NAME PRIORITY token|skip REGEX</span>; the lower priority wins a tie. Custom rules give <b>lexical analysis only</b>: tokens and automata are shown, but parsing, intermediate code and execution are skipped, because the parser only understands the built-in C, Java and Python token sets.</p>
+      <textarea id="rulesText" spellcheck="false" aria-label="Lexical rules"></textarea>
+    </div>
+    <div class="editor">
+      <div class="gutter" id="gutter" aria-hidden="true"></div>
+      <div class="code-area">
+        <div id="lineMarks"></div>
+        <pre id="hl" aria-hidden="true"></pre>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Source code editor"></textarea>
+        <div class="searchbox" id="searchbox">
+          <input class="inp" id="searchInput" placeholder="Find…" aria-label="Find in code">
+          <span class="mono muted" id="searchCount" style="font-size:12px">0</span>
+          <button class="btn sm" id="searchNext" title="Next match" aria-label="Next match">↓</button>
+          <button class="btn sm ghost" id="searchClose" title="Close" aria-label="Close search">✕</button>
+        </div>
+      </div>
+    </div>
+    <div class="statusbar">
+      <span id="cursorPos">Ln 1, Col 1</span><span id="docInfo">0 lines</span><span id="langInfo"></span>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" id="findBtn" title="Find (Ctrl/⌘ + F)">Find</button>
+      <button class="btn sm ghost" id="copyBtn">Copy</button>
+      <button class="btn sm ghost" id="clearBtn">Clear</button>
+    </div>
+  </section>
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize panels"></div>
+  <section class="pane" aria-label="Compiler results">
+    <div class="tabs" role="tablist" id="tabs">
+      <button class="tab sel" role="tab" data-view="tokens" aria-controls="v-tokens">Tokens <span class="badge" id="b-tokens"></span></button>
+      <button class="tab" role="tab" data-view="automata" aria-controls="v-automata">Automata <span class="badge" id="b-automata"></span></button>
+      <button class="tab" role="tab" data-view="syntax" aria-controls="v-syntax">Syntax &amp; AST <span class="badge" id="b-syntax"></span></button>
+      <button class="tab" role="tab" data-view="code" aria-controls="v-code">Intermediate Code <span class="badge" id="b-code"></span></button>
+      <button class="tab" role="tab" data-view="run" aria-controls="v-run">Run &amp; Compare <span class="badge" id="b-run"></span></button>
+    </div>
+    <div class="results" id="results">
+      <div class="view sel" id="v-tokens" role="tabpanel"></div>
+      <div class="view" id="v-automata" role="tabpanel"></div>
+      <div class="view" id="v-syntax" role="tabpanel"></div>
+      <div class="view" id="v-code" role="tabpanel"></div>
+      <div class="view" id="v-run" role="tabpanel"></div>
+    </div>
+  </section>
+</main>
+
+<section class="console" id="console" aria-label="Diagnostics">
+  <div class="console-head" id="consoleHead" role="button" tabindex="0" aria-expanded="false" aria-controls="consoleBody">
+    <span class="chev" aria-hidden="true"></span>
+    <span>Diagnostics</span>
+    <span class="cnt" title="Errors"><span class="dot error"></span><span id="c-err">0</span></span>
+    <span class="cnt" title="Warnings"><span class="dot warn"></span><span id="c-warn">0</span></span>
+    <span class="cnt" title="Notes"><span class="dot neutral"></span><span id="c-note">0</span></span>
+    <span class="spacer"></span><span class="msg hide-sm" id="consoleMsg">Compile to see errors and warnings</span>
+  </div>
+  <div class="console-body" id="consoleBody"></div>
+</section>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

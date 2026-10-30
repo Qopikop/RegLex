@@ -1,0 +1,156 @@
+Regex Lexer Generator
+=====================
+
+Part 1 -- character classes compiled directly
+
+Pattern [a-z]                    NFA states: 2
+  a        MATCH
+  7        reject
+  123      reject
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [0-9]+                   NFA states: 3
+  a        reject
+  7        MATCH
+  123      MATCH
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [a-zA-Z_][a-zA-Z0-9_]*   NFA states: 4
+  a        MATCH
+  7        reject
+  123      reject
+  hello    MATCH
+  abc123   MATCH
+  A1       MATCH
+  _tmp9    MATCH
+
+Part 2 -- scanning examples/sample.c with 10 rules (rules/c.rules)
+
+input:
+#include <stdio.h>
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+/* Sum the even numbers up to n. */
+int sum_even(int n) {
+    int total = 0;
+    for (int i = 0; i <= n; i++) {
+        if (i % 2 == 0) total += i;   // keep evens only
+    }
+    return total;
+}
+
+int main(void) {
+    double ratio = 3.5e-1;
+    char sep = '\n';
+    int big = MAX(0x1F, sum_even(10));
+    big = big @ 2;   /* '@' is not C: watch the scanner report it and recover */
+    printf("total = %d, ratio = %f%c", big, ratio, sep);
+    return 0;
+}
+
+tokens:
+     1:1    DIRECTIVE  '#include <stdio.h>'
+     2:1    DIRECTIVE  '#define MAX(a, b) ((a) > (b) ? (a) : (b))'
+     5:1    KEYWORD    'int'
+     5:5    IDENT      'sum_even'
+     5:13   PUNCT      '('
+     5:14   KEYWORD    'int'
+     5:18   IDENT      'n'
+     5:19   PUNCT      ')'
+     5:21   PUNCT      '{'
+     6:5    KEYWORD    'int'
+     6:9    IDENT      'total'
+     6:15   OP         '='
+     6:17   NUMBER     '0'
+     6:18   PUNCT      ';'
+     7:5    KEYWORD    'for'
+     7:9    PUNCT      '('
+     7:10   KEYWORD    'int'
+     7:14   IDENT      'i'
+     7:16   OP         '='
+     7:18   NUMBER     '0'
+     7:19   PUNCT      ';'
+     7:21   IDENT      'i'
+     7:23   OP         '<='
+     7:26   IDENT      'n'
+     7:27   PUNCT      ';'
+     7:29   IDENT      'i'
+     7:30   OP         '++'
+     7:32   PUNCT      ')'
+     7:34   PUNCT      '{'
+     8:9    KEYWORD    'if'
+     8:12   PUNCT      '('
+     8:13   IDENT      'i'
+     8:15   OP         '%'
+     8:17   NUMBER     '2'
+     8:19   OP         '=='
+     8:22   NUMBER     '0'
+     8:23   PUNCT      ')'
+     8:25   IDENT      'total'
+     8:31   OP         '+='
+     8:34   IDENT      'i'
+     8:35   PUNCT      ';'
+     9:5    PUNCT      '}'
+    10:5    KEYWORD    'return'
+    10:12   IDENT      'total'
+    10:17   PUNCT      ';'
+    11:1    PUNCT      '}'
+    13:1    KEYWORD    'int'
+    13:5    IDENT      'main'
+    13:9    PUNCT      '('
+    13:10   KEYWORD    'void'
+    13:14   PUNCT      ')'
+    13:16   PUNCT      '{'
+    14:5    KEYWORD    'double'
+    14:12   IDENT      'ratio'
+    14:18   OP         '='
+    14:20   NUMBER     '3.5e-1'
+    14:26   PUNCT      ';'
+    15:5    KEYWORD    'char'
+    15:10   IDENT      'sep'
+    15:14   OP         '='
+    15:16   CHAR       ''\n''
+    15:20   PUNCT      ';'
+    16:5    KEYWORD    'int'
+    16:9    IDENT      'big'
+    16:13   OP         '='
+    16:15   IDENT      'MAX'
+    16:18   PUNCT      '('
+    16:19   NUMBER     '0x1F'
+    16:23   PUNCT      ','
+    16:25   IDENT      'sum_even'
+    16:33   PUNCT      '('
+    16:34   NUMBER     '10'
+    16:36   PUNCT      ')'
+    16:37   PUNCT      ')'
+    16:38   PUNCT      ';'
+    17:5    IDENT      'big'
+    17:9    OP         '='
+    17:11   IDENT      'big'
+  line 17 col 15: unrecognized character '@' -- skipped
+    17:17   NUMBER     '2'
+    17:18   PUNCT      ';'
+    18:5    IDENT      'printf'
+    18:11   PUNCT      '('
+    18:12   STRING     '"total = %d, ratio = %f%c"'
+    18:38   PUNCT      ','
+    18:40   IDENT      'big'
+    18:43   PUNCT      ','
+    18:45   IDENT      'ratio'
+    18:50   PUNCT      ','
+    18:52   IDENT      'sep'
+    18:55   PUNCT      ')'
+    18:56   PUNCT      ';'
+    19:5    KEYWORD    'return'
+    19:12   NUMBER     '0'
+    19:13   PUNCT      ';'
+    20:1    PUNCT      '}'
+
+Interactive view:  python3 visualize/serve.py  (the compiler workbench)
+Full compiler (parser, TAC, optimizer):  build/rcc <file.c|.java|.py>

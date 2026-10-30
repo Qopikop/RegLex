@@ -53,4 +53,5 @@ tokens:
      2:24   OP         '-'
      2:25   IDENT      'afa'
 
-Interactive view of this run:  python3 visualize/build.py source.txt --open
+Interactive view:  python3 visualize/serve.py  (the compiler workbench)
+Full compiler (parser, TAC, optimizer):  build/rcc <file.c|.java|.py>

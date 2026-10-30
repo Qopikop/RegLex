@@ -1,0 +1,5 @@
+-- area of a ring
+let outer := 12.5
+let inner := 4
+let area := 3.14159 * (outer ^ 2 - inner ^ 2)
+print area / 2

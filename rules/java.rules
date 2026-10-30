@@ -1,0 +1,20 @@
+# Token rules for Java.   Usage: ./lexer Program.java --rules rules/java.rules
+#
+# One rule per line:  NAME  PRIORITY  token|skip  REGEX
+#   PRIORITY  breaks ties when two rules match the same length (lower wins)
+#   skip      the match is consumed but not emitted (whitespace, comments)
+# In REGEX, \n \t \r \f \v are those characters; any other \x is a literal x.
+#
+# Differences from C: no preprocessor, '@' starts annotations, '>>>' and
+# '>>>=' are unsigned shifts, text blocks use """...""", literals may contain
+# '_' separators, and true/false/null are keywords.
+
+KEYWORD    1  token  abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while|true|false|null|var|record
+COMMENT    2  skip   //[^\n]*|/\*([^*]|\*+[^*/])*\*+/
+STRING     2  token  """([^"\\]|\\[^\n]|\\\n|"[^"]|""[^"])*"""|"([^"\\\n]|\\[^\n])*"
+CHAR       2  token  '([^'\\\n]|\\[^\n]|\\u[0-9a-fA-F]+)'
+NUMBER     2  token  0[xX][0-9a-fA-F_]+[lL]?|0[bB][01_]+[lL]?|[0-9][0-9_]*[lLfFdD]?|[0-9][0-9_]*\.[0-9_]*([eE][+\-]?[0-9]+)?[fFdD]?|\.[0-9][0-9_]*([eE][+\-]?[0-9]+)?[fFdD]?|[0-9][0-9_]*[eE][+\-]?[0-9]+[fFdD]?
+IDENT      2  token  [a-zA-Z_$][a-zA-Z0-9_$]*
+OP         2  token  >>>=|<<=|>>=|>>>|\.\.\.|->|::|\+\+|--|&&|\|\||==|!=|<=|>=|<<|>>|\+=|-=|\*=|/=|%=|&=|\|=|\^=|[-+*/%=<>!&|^~?@]
+PUNCT      2  token  [(){}\[\];,.:]
+WS         3  skip   [ \t\r\n\f\v]+

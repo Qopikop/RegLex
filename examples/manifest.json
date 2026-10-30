@@ -1,0 +1,28 @@
+{
+  "examples": [
+    {"file": "c/01_expressions.c", "language": "C", "level": "Basic", "title": "Expressions & constants", "about": "Precedence, C division/modulo rules, constant folding, dead code.", "expect": "run"},
+    {"file": "c/02_control_flow.c", "language": "C", "level": "Intermediate", "title": "Control flow", "about": "Functions, enums, switch fall-through, do-while, globals.", "expect": "run"},
+    {"file": "c/03_algorithms.c", "language": "C", "level": "Intermediate", "title": "Algorithms", "about": "Quicksort, binary search, recursion, 2-D matrix multiply.", "expect": "run"},
+    {"file": "c/04_toolkit.c", "language": "C", "level": "Advanced", "title": "Toolkit (250 lines)", "about": "RNG, statistics, DP (LCS, knapsack), text, bits, shunting-yard evaluator.", "expect": "run"},
+    {"file": "c/05_optimizations.c", "language": "C", "level": "Intermediate", "title": "Optimization showcase", "about": "One function per optimization pass, plus cases that must not be optimized.", "expect": "run"},
+    {"file": "c/90_errors.c", "language": "C", "level": "Errors", "title": "Errors & recovery", "about": "Lexical, syntax and semantic errors in one file.", "expect": "errors", "diagnostics": ["Lexical Error", "Syntax Error", "Duplicate Declaration", "Undeclared Variable", "Call Error"]},
+    {"file": "c/91_partial.c", "language": "C", "level": "Partial", "title": "Structs & pointers", "about": "Parsed fully; struct, pointer and malloc operations stay opaque in TAC.", "expect": "partial"},
+    {"file": "java/Basics.java", "language": "Java", "level": "Basic", "title": "Expressions & types", "about": "Typed arithmetic, int wrap-around, char arithmetic, string concatenation.", "expect": "run"},
+    {"file": "java/ControlFlow.java", "language": "Java", "level": "Intermediate", "title": "Control flow", "about": "Static methods, switch, for-each, do-while, continue.", "expect": "run"},
+    {"file": "java/Algorithms.java", "language": "Java", "level": "Intermediate", "title": "Algorithms", "about": "Merge sort, binary search, 2-D arrays, recursion, Arrays.toString.", "expect": "run"},
+    {"file": "java/Toolkit.java", "language": "Java", "level": "Advanced", "title": "Toolkit (230 lines)", "about": "Statistics, edit distance, LIS, strings, bit tricks, expression evaluator.", "expect": "run"},
+    {"file": "java/Optimizations.java", "language": "Java", "level": "Intermediate", "title": "Optimization showcase", "about": "x * 8 becomes a shift (safe under Java wrapping); possible exceptions are kept.", "expect": "run"},
+    {"file": "java/Errors.java", "language": "Java", "level": "Errors", "title": "Type & syntax errors", "about": "Lossy conversions, incompatible types, arity, missing semicolon.", "expect": "errors", "diagnostics": ["Type Error", "Call Error", "Undeclared Variable", "Syntax Error"]},
+    {"file": "java/Shapes.java", "language": "Java", "level": "Partial", "title": "Objects & interfaces", "about": "Classes, interfaces, fields and try/catch: parsed; object operations stay opaque.", "expect": "partial"},
+    {"file": "python/basics.py", "language": "Python", "level": "Basic", "title": "Expressions & dynamic values", "about": "Floor division, true division, big ints, f-strings, comparison chains.", "expect": "run"},
+    {"file": "python/control_flow.py", "language": "Python", "level": "Intermediate", "title": "Control flow", "about": "Defaults and keyword args, for-else, enumerate, global, elif chains.", "expect": "run"},
+    {"file": "python/algorithms.py", "language": "Python", "level": "Intermediate", "title": "Algorithms", "about": "Merge sort with slices, binary search, tuples, nested lists.", "expect": "run"},
+    {"file": "python/toolkit.py", "language": "Python", "level": "Advanced", "title": "Toolkit (230 lines)", "about": "Statistics, DP, memoisation, text, bits, shunting-yard evaluator.", "expect": "run"},
+    {"file": "python/optimizations.py", "language": "Python", "level": "Intermediate", "title": "Optimization showcase", "about": "Only proven integers are rewritten; unknown types are left alone.", "expect": "run"},
+    {"file": "python/errors.py", "language": "Python", "level": "Errors", "title": "Syntax & name errors", "about": "Unclosed bracket, bad indentation, misspelled names.", "expect": "errors", "diagnostics": ["Syntax Error", "Indentation Error", "Undefined Name"]},
+    {"file": "python/inventory.py", "language": "Python", "level": "Partial", "title": "Classes & dicts", "about": "Classes, attributes, dicts, comprehensions, try/except stay opaque.", "expect": "partial"}
+  ],
+  "lexical": [
+    {"file": "lexical/calculator.txt", "rules": "lexical/calculator.rules", "title": "Custom rules: calculator", "about": "A rule set written from scratch: lexical analysis and automata only."}
+  ]
+}

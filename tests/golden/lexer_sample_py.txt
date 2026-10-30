@@ -1,0 +1,118 @@
+Regex Lexer Generator
+=====================
+
+Part 1 -- character classes compiled directly
+
+Pattern [a-z]                    NFA states: 2
+  a        MATCH
+  7        reject
+  123      reject
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [0-9]+                   NFA states: 3
+  a        reject
+  7        MATCH
+  123      MATCH
+  hello    reject
+  abc123   reject
+  A1       reject
+  _tmp9    reject
+
+Pattern [a-zA-Z_][a-zA-Z0-9_]*   NFA states: 4
+  a        MATCH
+  7        reject
+  123      reject
+  hello    MATCH
+  abc123   MATCH
+  A1       MATCH
+  _tmp9    MATCH
+
+Part 2 -- scanning examples/sample.py with 8 rules (rules/python.rules)
+
+input:
+import os  # comment
+@dataclass
+class Point:
+    """Doc string with "quotes" inside."""
+    def dist(self, other: "Point") -> float:
+        return ((self.x - other.x) ** 2 + 1_000.5e3) // 2 if x is not None else f'{x!r}'
+items = [i for i in range(10) if i % 2 == 0]; y @= z; w := 3
+
+tokens:
+     1:1    KEYWORD    'import'
+     1:8    IDENT      'os'
+     2:1    OP         '@'
+     2:2    IDENT      'dataclass'
+     3:1    KEYWORD    'class'
+     3:7    IDENT      'Point'
+     3:12   PUNCT      ':'
+     4:5    STRING     '"""Doc string with "quotes" inside."""'
+     5:5    KEYWORD    'def'
+     5:9    IDENT      'dist'
+     5:13   PUNCT      '('
+     5:14   KEYWORD    'self'
+     5:18   PUNCT      ','
+     5:20   IDENT      'other'
+     5:25   PUNCT      ':'
+     5:27   STRING     '"Point"'
+     5:34   PUNCT      ')'
+     5:36   OP         '->'
+     5:39   IDENT      'float'
+     5:44   PUNCT      ':'
+     6:9    KEYWORD    'return'
+     6:16   PUNCT      '('
+     6:17   PUNCT      '('
+     6:18   KEYWORD    'self'
+     6:22   PUNCT      '.'
+     6:23   IDENT      'x'
+     6:25   OP         '-'
+     6:27   IDENT      'other'
+     6:32   PUNCT      '.'
+     6:33   IDENT      'x'
+     6:34   PUNCT      ')'
+     6:36   OP         '**'
+     6:39   NUMBER     '2'
+     6:41   OP         '+'
+     6:43   NUMBER     '1_000.5e3'
+     6:52   PUNCT      ')'
+     6:54   OP         '//'
+     6:57   NUMBER     '2'
+     6:59   KEYWORD    'if'
+     6:62   IDENT      'x'
+     6:64   KEYWORD    'is'
+     6:67   KEYWORD    'not'
+     6:71   KEYWORD    'None'
+     6:76   KEYWORD    'else'
+     6:81   STRING     'f'{x!r}''
+     7:1    IDENT      'items'
+     7:7    OP         '='
+     7:9    PUNCT      '['
+     7:10   IDENT      'i'
+     7:12   KEYWORD    'for'
+     7:16   IDENT      'i'
+     7:18   KEYWORD    'in'
+     7:21   IDENT      'range'
+     7:26   PUNCT      '('
+     7:27   NUMBER     '10'
+     7:29   PUNCT      ')'
+     7:31   KEYWORD    'if'
+     7:34   IDENT      'i'
+     7:36   OP         '%'
+     7:38   NUMBER     '2'
+     7:40   OP         '=='
+     7:43   NUMBER     '0'
+     7:44   PUNCT      ']'
+     7:45   PUNCT      ';'
+     7:47   IDENT      'y'
+     7:49   OP         '@='
+     7:52   IDENT      'z'
+     7:53   PUNCT      ';'
+     7:55   IDENT      'w'
+     7:57   OP         ':='
+     7:60   NUMBER     '3'
+
+Interactive view:  python3 visualize/serve.py  (the compiler workbench)
+Full compiler (parser, TAC, optimizer):  build/rcc <file.c|.java|.py>
